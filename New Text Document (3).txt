@@ -1,0 +1,90 @@
+-how to call apis from react runnig local
+
+
+ .......>>>>>>>>> from react    
+
+
+
+const response = await axios.get(
+            `/LaravelCRUD/qryjobcards/index?data=query`
+        )
+
+
+
+
+---------------------------------------------------------------------------------------------------------------------
+
+
+vite.config settings(once complilled will run without the the vite server  )
+
+
+import { defineConfig } from 'vite';
+import laravel from 'laravel-vite-plugin';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: [
+                
+
+                'resources/css/app.css',
+                'resources/js/app.tsx',
+                'resources/js/reactjoblist.tsx',
+                'resources/js/jobcardReport.tsx',
+                'resources/js/createjobcard.tsx'
+                
+            ],
+            refresh: true,
+        }),
+        react(),
+    ],
+});
+
+
+
+----------------------------------------------------------------------------------------------------------------
+
+how to point to the file from the page (blade in Laravel)
+
+
+
+<link rel="stylesheet" href="{{ asset('public/build/assets/app-P-quw3HD.css') }}">
+<script src="{{ asset('public/build/assets/reactjoblist-CXJCgAiG.js') }}" type="module" ></script>
+
+
+
+----------------------------------------------------------------------------------------------------------------
+
+htaccess file setting 
+
+
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+    
+    RewriteEngine On
+    
+    # Redirect root domain to /public folder (ADD THIS)
+    RewriteCond %{REQUEST_URI} ^/$
+    RewriteRule ^$ /public/ [L,R=301]
+    
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+    
+    # Send Requests To Front Controller
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+
+------------------------------------------------------------------------------------------------------------------------------------------

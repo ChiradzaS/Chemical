@@ -1,0 +1,26 @@
+// tsconfig.json (in your project root)
+{
+  "compilerOptions": {
+    "baseUrl": "./", // Important: This is relative to tsconfig.json
+    "paths": {
+      "@/*": ["./resources/js/*"] // Maps @/ to resources/js/
+    },
+    "jsx": "react", // or "react-jsx"
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "target": "esnext",
+    "lib": ["dom", "dom.iterable", "esnext"] // Essential for browser APIs
+  },
+  "include": [
+    "resources/js/**/*.ts",
+    "resources/js/**/*.tsx",
+    "resources/js/**/*.jsx", // If you have mixed JS/TS
+    "resources/js/**/*.js"   // If you have mixed JS/TS
+  ],
+  "exclude": [
+    "node_modules", 
+    "public",
+    "vendor"
+  ]
+}

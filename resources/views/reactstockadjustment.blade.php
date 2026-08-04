@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>StockAdjustment
+        
+    </title>
+    
+         <!-- @viteReactRefresh
+        @vite(['resources/css/app.css', 'resources/js/stockadjustment.tsx'])  -->
+
+<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script src="{{ asset('public/build/assets/stockadjustment.js') }}" type="module" ></script> 
+
+  
+    
+</head>
+<body>
+<script>
+
+    window.customersData = [
+
+        @foreach($customers as $customer)
+            {
+                id: {{ $customer->id }},
+                name: "{{ $customer->name }}"
+            }{{ !$loop->last ? ',' : '' }}
+        @endforeach
+
+    ];
+
+        // For products data  
+        // window.productsData = [
+        //     @foreach($products as $product)
+        //         {
+        //             id: {{ $product->id }},
+        //             name: "{{ $product->name }}",
+        //             productType: "{{ $product->productType }}"
+        //         }{{ !$loop->last ? ',' : '' }}
+        //     @endforeach
+        // ];
+
+
+                // For products data  
+        window.productsData = [
+            @foreach($products as $product)
+                {
+                    id: {{ $product->id }},
+                    name: "{{ $product->name }}",
+                    productType: "{{ $product->productType }}",
+                    unitPackId: "{{ $product->unitPackId }}",
+                    actualSellingPrice: "{{ $product->actualSellingPrice }}",
+                    defaultSellingPrice: "{{ $product->defaultSellingPice }}"
+
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+
+            // ── Chemical products ──────────────────────────────────────────────────────
+    window.chemicalProductsData = [
+        @foreach($chemicalProducts as $product)
+            {
+                id:                    {{ $product->id }},
+                name:                  "{{ addslashes($product->name) }}",
+                sku:                   "{{ $product->sku ?? 'null' }}",
+                category:              "{{ $product->category ?? '' }}",
+                brand:                 "{{ $product->brand ?? '' }}",
+                stock_unit_id:         {{ $product->stock_unit_id ?? 'null' }},
+                colour_id:             {{ $product->colour_id ?? 'null' }},
+                viscosity_id:          {{ $product->viscosity_id ?? 'null' }},
+                active_ingredient_id:  {{ $product->active_ingredient_id ?? 'null' }},
+                fragrance_id:          {{ $product->fragrance_id ?? 'null' }},
+                bag_type_id:           {{ $product->bag_type_id ?? 'null' }},
+                container_size_id:     {{ $product->container_size_id ?? 'null' }},
+                batch_size_litres:     {{ $product->batch_size_litres ?? 'null' }},
+                units_per_batch:       {{ $product->units_per_batch ?? 'null' }},
+                yield_percentage:      {{ $product->yield_percentage ?? 'null' }},
+                weight_per_unit_grams: {{ $product->weight_per_unit_grams ?? 'null' }},
+                price:                 {{ $product->price ?? 'null' }},
+                vat_applicable:        {{ $product->vat_applicable ?? 0 }},
+                concentration:         {{ $product->concentration ?? 'null' }},
+                dilution_ratio:        "{{ $product->dilution_ratio ?? '' }}"
+            }{{ !$loop->last ? ',' : '' }}
+        @endforeach
+    ];
+
+
+                // For products data  
+        window.product = [
+            @foreach($porducts as $product)
+                {
+                    id: {{ $product->id }},
+                    name: "{{ $product->name }}",
+                    productType: "{{ $product->productType }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+        // For machine types data
+        window.machineTypesData = [
+            @foreach($machinetypes as $machineType)
+                {
+                    id: {{ $machineType->id }},
+                    name: "{{ $machineType->name }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+                // For unittypes data
+        window.unitTypesData = [
+            @foreach($unittypes as $unitType)
+                {
+                    id: {{ $unitType->id }},
+                    name: "{{ $unitType->name }}",
+                    value: "{{ $unitType->value }}",
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+               // For materialtypes data
+        window.materialTypesData = [
+            @foreach($materialtypes as $materialType)
+                {
+                    id: {{ $materialType->id }},
+                    name: "{{ $materialType->name }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+        
+               // For colourtypes data
+        window.colourTypesData = [
+            @foreach($colourtypes as $colourType)
+                {
+                    id: {{ $colourType->id }},
+                    name: "{{ $colourType->name }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+                
+               // For colourtypes data
+        window.bagTypesData = [
+            @foreach($bagtypes as $bagType)
+                {
+                    id: {{ $bagType->id }},
+                    name: "{{ $bagType->name }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+                       // For colourtypes data
+        window.processTypesData = [
+            @foreach($processtypes as $processType)
+                {
+                    id: {{ $processType->id }},
+                    name: "{{ $processType->name }}"
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+        
+
+         window.stateTypesData = [
+            @foreach($statustypes as $stateType)
+                {
+                    id: {{ $stateType->id }},
+                    name: "{{ $stateType->name }}"
+
+                }{{ !$loop->last ? ',' : '' }}
+            @endforeach
+        ];
+
+
+
+
+            
+</script>
+    <!-- <h1>Laravel + React Test</h1>
+    <p>Laravel is working ✅</p>
+    <p id="react-status">React loading...</p>
+     -->
+    <div id="root"></div>
+    
+    <script>
+        // console.log('=== CHECKING REACT SETUP ===');
+        // console.log('Root div:', document.getElementById('root'));
+        
+        // Check if Vite assets loaded
+        setTimeout(() => {
+            //console.log('Checking React after delay...');
+            // console.log('React available:', typeof window.React !== 'undefined');
+            
+            const rootContent = document.getElementById('root').innerHTML;
+            // console.log('Root content:', rootContent);
+            
+            if (rootContent.trim() === '') {
+                document.getElementById('react-status').innerHTML = 'React NOT loaded ❌';
+                // console.error('React failed to mount!');
+            } else {
+                document.getElementById('react-status').innerHTML = 'React loaded ✅';
+                // console.log('React mounted successfully!');
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

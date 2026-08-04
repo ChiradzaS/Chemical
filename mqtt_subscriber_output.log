@@ -1,0 +1,13 @@
+Connected to MQTT broker at 192.168.7.16:1883
+Subscribed to topics: jobcard/request, recycleproduction/request, test/topic, user/request, login/request, production/request, jobcard1/request, jobcard2/request, productionitem/request, userDetails/request
+Listening for messages... Press Ctrl+C to stop.
+^CConnected to MQTT broker at 192.168.7.16:1883
+Subscribed to topics: jobcard/request, recycleproduction/request, test/topic, user/request, login/request, production/request, jobcard1/request, jobcard2/request, productionitem/request, userDetails/request
+Listening for messages... Press Ctrl+C to stop.
+^CConnected to MQTT broker at 192.168.7.16:1883
+Subscribed to topics: jobcard/request, recycleproduction/request, test/topic, user/request, login/request, production/request, jobcard1/request, jobcard2/request, productionitem/request, userDetails/request
+Listening for messages... Press Ctrl+C to stop.
+^CConnected to MQTT broker at 192.168.7.16:1883
+Subscribed to topics: jobcard/request, recycleproduction/request, test/topic, user/request, login/request, production/request, jobcard1/request, jobcard2/request, productionitem/request, userDetails/request
+Listening for messages... Press Ctrl+C to stop.
+^C

@@ -1,0 +1,34 @@
+<strong>Employee :</strong>
+    <select name="employeeId" id="employeeId" style="width:200px;" placeholder="-- Select Employee --">
+    @foreach($employees as $employee)
+    <option value="{{$employee->id}}">{{$employee->name}}</option>
+    @endforeach
+    <option value="-9">None</option>
+    </select>
+
+
+{!!!$productions->links() !!}
+
+
+@php $tmpProduct = $porducts[$job_card->productId]; @endphp
+@php $tmpUnittype = $unittypes[$job_card->unitId]; @endphp
+
+<td>{{ $tmpProduct->name }}</td>
+<td>{{ $tmpUnittype->name}}</td>
+
+///////////////////
+
+UserController to UserDetailsController   
+User to UserDetails
+
+ php artisan migrate --path=/database/migrations/2022_12_28_140032_jobcarditems.php
+ php artisan make:migration userdetails  
+ php artisan make:controller UserDetailsController --resource
+	
+ php artisan make:model UserDetails
+
+if (Auth::check() == false) {
+         //return redirect("login")->withSuccess('Login details are not valid');
+         return redirect("login")->withSuccess('Login details are not valid');
+        
+    }

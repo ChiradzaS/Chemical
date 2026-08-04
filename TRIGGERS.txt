@@ -1,0 +1,216 @@
+BEGIN
+    DECLARE jobcard_id INT;
+    DECLARE jobcard_outstanding INT;
+    DECLARE production_total INT;
+    DECLARE final_total INT;
+    
+    -- Check if jobcarditemId is greater than 0
+    IF NEW.jobcarditemId > 0 THEN
+        -- Update jobcarditems state to 62
+        UPDATE jobcarditems 
+        SET stateId = 62
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Get jobCardId and outstanding quantity
+        SELECT jobCardId, outstanding 
+        INTO jobcard_id, jobcard_outstanding
+        FROM jobcarditems 
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Update job_cards state to 62
+        UPDATE job_cards 
+        SET stateId = 62
+        WHERE id = jobcard_id;
+        
+        -- Calculate production total
+        SELECT COALESCE(SUM(qnt), 0) 
+        INTO production_total
+        FROM productionitems 
+        WHERE jobcarditemId = NEW.jobcarditemId;
+        
+        -- Calculate final total
+        SET final_total = jobcard_outstanding - production_total;
+        
+        -- Update jobcarditems quantity
+        UPDATE jobcarditems 
+        SET qnt = final_total
+        WHERE id = NEW.jobcarditemId;
+    END IF;
+END
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------old
+
+BEGIN
+    DECLARE jobcard_id INT;
+    DECLARE jobcard_outstanding INT;
+    DECLARE production_total INT;
+    DECLARE final_total INT;
+    
+    -- Check if jobcarditemId is greater than 0
+    IF NEW.jobcarditemId > 0 THEN
+        -- Update jobcarditems state to 62
+        UPDATE jobcarditems 
+        SET stateId = 62
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Get jobCardId and outstanding quantity
+        SELECT jobCardId, outstanding 
+        INTO jobcard_id, jobcard_outstanding
+        FROM jobcarditems 
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Update job_cards state to 62
+        UPDATE job_cards 
+        SET stateId = 62
+        WHERE id = jobcard_id;
+        
+        -- Calculate production total
+        SELECT COALESCE(SUM(qnt), 0) 
+        INTO production_total
+        FROM productionitems 
+        WHERE jobcarditemId = NEW.jobcarditemId;
+        
+        -- Calculate final total
+        SET final_total = jobcard_outstanding - production_total;
+        
+        -- Update jobcarditems quantity
+        UPDATE jobcarditems 
+        SET qnt = final_total
+        WHERE id = NEW.jobcarditemId;
+    END IF;
+END
+
+-------------------------------------------------------------------------------------------------------------------------old
+
+
+
+BEGIN
+
+    DECLARE jobcard_id INT;
+    DECLARE jobcard_outstanding INT;
+    DECLARE production_total INT;
+    DECLARE final_total INT;
+    DECLARE stocks_id INT; 
+    DECLARE stock_qnt INT DEFAULT 0;
+    DECLARE prv INT DEFAULT 0;
+    
+    -- Check if jobcarditemId is greater than 0
+    IF NEW.jobcarditemId > 0 THEN
+        -- Update jobcarditems state to 62
+        UPDATE jobcarditems 
+        SET stateId = 62
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Get jobCardId and outstanding quantity
+        SELECT jobCardId, outstanding 
+        INTO jobcard_id, jobcard_outstanding
+        FROM jobcarditems 
+        WHERE id = NEW.jobcarditemId;
+        
+        -- Update job_cards state to 62
+        UPDATE job_cards 
+        SET stateId = 62
+        WHERE id = jobcard_id;
+        
+        -- Calculate production total
+        SELECT COALESCE(SUM(qnt), 0) 
+        INTO production_total
+        FROM productionitems 
+        WHERE jobcarditemId = NEW.jobcarditemId
+        AND stateId != 134;
+        
+        -- Calculate final total
+        SET final_total = jobcard_outstanding - production_total;
+        
+        -- Update jobcarditems quantity
+        UPDATE jobcarditems 
+        SET qnt = final_total
+        WHERE id = NEW.jobcarditemId;
+        
+         -- Stock logic ---------------------------------
+         
+        
+        SELECT id, qnt
+        INTO stocks_id, stock_qnt
+        FROM stocks
+        WHERE productId = NEW.productId
+        LIMIT 1;
+        
+         INSERT INTO stocks_trans (stockId, userId,                docId, docType, qnt, created_at)
+         VALUES (stocks_id, 63, NEW.id, 105,                      NEW.qnt, NOW());
+        
+
+    SET prv = stock_qnt;
+    UPDATE stocks
+    SET qnt = prv + NEW.qnt,
+    prvqnt = prv
+    WHERE id = stocks_id;
+    
+        
+        
+    END IF;
+END
+---------------------------------------------------------------------------------------------------------------------------------------------------------------new
+
+
+BEGIN
+    DECLARE production_total DECIMAL(10,2);
+    DECLARE current_outstanding DECIMAL(10,2);
+    DECLARE final_total DECIMAL(10,2);
+    DECLARE stocks_id INT; 
+    DECLARE stock_qnt INT DEFAULT 0;
+    DECLARE prv INT DEFAULT 0;
+    
+    
+    -- Check if state has been updated to 134
+    IF NEW.stateId = 134 AND OLD.stateId != 134 THEN
+        -- Only proceed if jobcarditemId exists
+        IF NEW.jobcarditemId > 0 THEN
+            -- Calculate production total excluding items with stateId 134
+            SELECT COALESCE(SUM(qnt), 0) INTO production_total
+            FROM productionitems
+            WHERE jobcarditemId = NEW.jobcarditemId
+            AND stateId != 134;
+            
+            -- Get current outstanding value from jobcarditems
+            SELECT outstanding INTO current_outstanding
+            FROM jobcarditems
+            WHERE id = NEW.jobcarditemId;
+            
+            -- Calculate final total
+            SET final_total = current_outstanding -                   production_total;
+            
+
+            UPDATE jobcarditems
+            SET qnt = final_total
+            WHERE id = NEW.jobcarditemId;
+            
+       -- stock tranzsactions  -------------------------- 
+       
+         SELECT id, qnt
+         INTO stocks_id, stock_qnt
+         FROM stocks
+         WHERE productId = NEW.productId
+         LIMIT 1;
+        
+         INSERT INTO stocks_trans (stockId, userId,                docId, docType, qnt, created_at)
+         VALUES (stocks_id, 63, NEW.id, 190,                      NEW.qnt, NOW());
+        
+
+        SET prv = stock_qnt;
+        UPDATE stocks
+        SET qnt = prv - NEW.qnt,
+        prvqnt = prv
+        WHERE id = stocks_id;
+            
+        END IF;
+        END IF;
+END
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------new
+
+
