@@ -6,15 +6,12 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>companyInfo</title>
 
-      <!-- @viteReactRefresh
-      @vite(['resources/css/app.css', 'resources/js/about.tsx']) -->
-
-    
 
 
 
 <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/about.js ') }}" type="module" ></script> 
+
+<script type="module" src="{{ asset('public/build/assets/about.js') }}?v={{ filemtime(public_path('build/assets/about.js')) }}"></script>
 
 </head>
 <body>

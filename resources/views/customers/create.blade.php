@@ -269,16 +269,7 @@ $(document).ready(function(){
 <div class="alert-success">{{ session('status') }}</div>
 @endif
 
-@if($errors->any())
-<div class="alert-summary">
-    <strong>{{ $errors->count() }} field{{ $errors->count() === 1 ? '' : 's' }} need attention:</strong>
-    <ul>
-        @foreach($errors->all() as $error)
-        <li>{{ $error }}</li>
-        @endforeach
-    </ul>
-</div>
-@endif
+
 
 {{-- ── Scrollable content ── --}}
 <div class="form-body">

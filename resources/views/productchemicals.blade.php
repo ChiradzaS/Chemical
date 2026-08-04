@@ -8,14 +8,11 @@
     
 
 
-{{-- Use the compiled assets instead --}} 
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/reactproduct.js') }}" type="module" ></script>  -->
 
-        @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/reactproduct.tsx'])
-        
+<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script src="{{ asset('public/build/assets/reactproduct.js') }}" type="module" ></script> 
 
+ 
     
 </head>
 <body>

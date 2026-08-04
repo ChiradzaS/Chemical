@@ -6,22 +6,12 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Create Products List</title>
     
-        <!-- @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicalproductlist.tsx'])
-         -->
 
-{{-- Use the compiled assets instead --}} 
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app-beAh6437.css') }}">
-<script src="{{ asset('public/build/assets/reactdeliveriescreate-Bi20kbku.js') }}" type="module" ></script> -->
-
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicalproductlist.js ') }}" type="module" ></script>  -->
+<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script src="{{ asset('public/build/assets/chemicalproductlist.js ') }}" type="module" ></script> 
 
 
-        @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicalproductlist.tsx'])
-        
-
+ 
     
 
 

@@ -7,12 +7,9 @@
     <title>Chemical Invoices &amp; Deliveries</title>
 
 
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicaldeliverylist.js') }}" type="module" ></script>  -->
+<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script src="{{ asset('public/build/assets/chemicaldeliverylist.js') }}" type="module" ></script> 
 
-
-       @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicaldeliverylist.tsx'])
 
 
 </head>

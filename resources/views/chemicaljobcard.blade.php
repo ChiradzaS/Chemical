@@ -6,11 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Create Chemical Job Card</title>
 
-    @viteReactRefresh
-    @vite(['resources/css/app.css', 'resources/js/chemicaljobcard.tsx'])
 
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicaljobcard.js') }}" type="module" ></script>  -->
+<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script src="{{ asset('public/build/assets/chemicaljobcard.js') }}" type="module" ></script> 
 
 
 </head>

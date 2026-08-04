@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Check, Loader2, Plus, Search, ChevronDown, ChevronRight, ShoppingCart, CircleCheck, X, Trash2,
+  Check, Loader2, Plus, Search, ChevronDown, ChevronRight, ShoppingCart, CircleCheck, X,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
@@ -28,9 +28,6 @@ interface OrderItemRow {
   DateComplete:  string | null;
   reference:     string | null;
   other:         string | null;
-  job_card_id:   number | null;
-  manufactured:  number | null;
-  openningQNT:   number | null;
 }
 
 interface OrderRow {
@@ -49,7 +46,7 @@ interface OrderRow {
 }
 
 const API_BASE   = window.laravelApiUrl || 'http://localhost/Chemical';
-const CREATE_URL = `${API_BASE}/chemicalorder`;
+const CREATE_URL = `${API_BASE}/ordercreate`;
 
 const STATE_COMPLETE = 2;
 
@@ -157,44 +154,6 @@ const OrderList: React.FC = () => {
     }
   };
 
-  // ── Can this order still be deleted? ──────────────────────────────────────
-  // Nothing completed, nothing planned into a job card, nothing manufactured,
-  // and no line amended since it was placed. Same checks run server-side.
-  const deleteBlockers = (order: OrderRow): string[] => {
-    const reasons: string[] = [];
-
-    if (isComplete(order.stateId))                              reasons.push('order is complete');
-    if (order.items.some(i => isComplete(i.stateId)))           reasons.push('items already ticked off');
-    if (order.items.some(i => Number(i.job_card_id) > 0))       reasons.push('linked to a job card');
-    if (order.items.some(i => Number(i.manufactured) > 0))      reasons.push('production started');
-    if (order.items.some(i => i.openningQNT != null
-                              && Number(i.quantity) !== Number(i.openningQNT)))
-                                                                reasons.push('quantities changed');
-    return reasons;
-  };
-
-  // ── Delete ────────────────────────────────────────────────────────────────
-  const handleDelete = async (order: OrderRow) => {
-    if (!confirm(`Delete order #${order.id} and its ${order.items.length} item(s)? This cannot be undone.`)) return;
-
-    setBusy(`delete-${order.id}`);
-    try {
-      const encodedData = encodeURIComponent(JSON.stringify({ id: order.id }));
-      const response    = await axios.get(`${API_BASE}/orders/destroy?data=${encodedData}`);
-
-      if (response.data?.message !== 'deleted') {
-        alert(response.data?.message || 'The order was not deleted.');
-        return;
-      }
-      setOrders(prev => prev.filter(o => o.id !== order.id));
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Could not delete that order.');
-      console.error(error);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   // ── Filter ────────────────────────────────────────────────────────────────
   const filtered = orders.filter(o => {
     const done = isComplete(o.stateId);
@@ -228,12 +187,12 @@ const OrderList: React.FC = () => {
               <p className="text-slate-400 text-sm">Tick items off as they are completed</p>
             </div>
           </div>
-          <button
-            onClick={() => { window.location.href = CREATE_URL; }}
+          <a
+            href={CREATE_URL}
             className="flex items-center gap-2 bg-sky-500 hover:bg-sky-600 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors shadow"
           >
             <Plus size={18} /> New Order
-          </button>
+          </a>
         </div>
 
         {/* ── Filters ── */}
@@ -349,8 +308,6 @@ const OrderList: React.FC = () => {
               const busyOrder    = busy === `order-${order.id}`;
               const customerName = byId(customers, order.customerId);
               const placedBy     = order.orderBy ? byId(users, order.orderBy) : null;
-              const blockers     = deleteBlockers(order);
-              const busyDelete   = busy === `delete-${order.id}`;
 
               return (
                 <div
@@ -411,30 +368,10 @@ const OrderList: React.FC = () => {
                           : <CircleCheck className="w-4 h-4" />}
                         {done ? 'Completed' : 'Complete all'}
                       </button>
-
-                      {/* Delete — only while the order is untouched */}
-                      {blockers.length === 0 && (
-                        <button
-                          onClick={() => handleDelete(order)}
-                          disabled={busyDelete}
-                          title="Delete this order"
-                          className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 bg-white/10 hover:bg-red-600 text-white border border-white/20"
-                        >
-                          {busyDelete
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <Trash2 className="w-4 h-4" />}
-                          Delete
-                        </button>
-                      )}
                     </div>
 
                     {order.other && (
                       <p className="mt-2 text-slate-400 text-xs italic">{order.other}</p>
-                    )}
-                    {blockers.length > 0 && (
-                      <p className="mt-2 text-slate-500 text-xs">
-                        Locked — {blockers.join(', ')}
-                      </p>
                     )}
                   </div>
 

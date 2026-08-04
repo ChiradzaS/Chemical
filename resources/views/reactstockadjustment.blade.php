@@ -9,11 +9,10 @@
         
     </title>
     
-         <!-- @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/stockadjustment.tsx'])  -->
 
 <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/stockadjustment.js') }}" type="module" ></script> 
+<script type="module"
+        src="{{ asset('public/build/assets/stockadjustment.js') }}?v={{ filemtime(public_path('build/assets/stockadjustment.js')) }}"></script>
 
   
     
