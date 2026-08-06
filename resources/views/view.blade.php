@@ -290,16 +290,11 @@ footer {
   {{-- Orders --}}
   <li class='active has-sub'><a href='#'><span>Orders</span></a>
     <ul>
-      <li><a href="#" onclick="myFunc1('orders/create')"><span>Create</span></a></li>
-      <li><a href="#" onclick="myFunc1('orders')"><span>List</span></a></li>
+
         <li><a href="#" onclick="myFunc1('chemicalorderlist')"><span>Order list <span class="chem-tag">CHEM</span></span></a></li>
         <li><a href="#" onclick="myFunc1('chemicalorder')"><span>Create Order <span class="chem-tag">CHEM</span></span></a></li>
       <li class='divider'></li>
-      <li class='has-sub'><a href='#'><span>Order items</span></a>
-        <ul>
-          <li><a href="#" onclick="myFunc1('order_items')"><span>List</span></a></li>
-        </ul>
-      </li>
+
     </ul>
   </li>
 
@@ -395,12 +390,17 @@ footer {
   </li>
 
 
+
+
+
   {{-- Reporting --}}
-  <!-- <li class='active has-sub'><a href='#'><span>Reporting</span></a>
+  <li class='active has-sub'><a href='#'><span>Supply</span></a>
     <ul>
-      <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Material Usage</span></a></li>
+      <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Add Supply</span></a></li>
+      <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Supply Stock</span></a></li>
+      <li><a href="#" onclick="myFunc1('chemicalmaterial')"><span>Raw Material</span></a></li>
     </ul>
-  </li> -->
+  </li>
 
   {{-- Settings --}}
   <li class='active has-sub'><a href='#'><span>⚙️ Settings</span></a>

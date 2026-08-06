@@ -672,10 +672,27 @@ class AppServiceProvider extends ServiceProvider
                         ->where('groupType', 'chemicalprocesses')
                         ->get();
 
-                    $chemicalprocesstypesKeys = array();
+                $chemicalprocesstypesKeys = array();
                     foreach ($chemicalprocesstypes as $chemicalprocesstype) {
                         $chemicalprocesstypesKeys[$chemicalprocesstype->id] = $chemicalprocesstype;
                     }
+
+
+
+
+                $ChemicalMaterialTypes = DB::table('types')
+                        ->where('groupType', 'ChemicalMaterialType')
+                        ->get();
+                    
+
+
+                $ChemicalUnitTypes = DB::table('types')
+                        ->where('groupType', 'ChemicalUnitType')
+                        ->get();
+                    
+
+
+
 
 
 
@@ -694,7 +711,9 @@ class AppServiceProvider extends ServiceProvider
                     'bottleTypes',
                     'containerSizes',
                     'capTypes',
-                    'lableTypes'
+                    'lableTypes',
+                    'ChemicalMaterialTypes',
+                    'ChemicalUnitTypes'
                 ));
 
                     

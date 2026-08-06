@@ -179,7 +179,7 @@ const OrderList: React.FC = () => {
       <div className="w-full space-y-6">
 
         {/* ── Page header ── */}
-        <div className="bg-[#0f172a] rounded-xl p-6 flex items-center justify-between shadow-lg">
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-6 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
             <ShoppingCart className="text-sky-400 w-7 h-7" />
             <div>
@@ -317,7 +317,7 @@ const OrderList: React.FC = () => {
                   }`}
                 >
                   {/* Order header */}
-                  <div className={`p-5 ${done ? 'bg-emerald-900' : 'bg-[#0f172a]'} text-white transition-colors`}>
+                  <div className={`p-5 bg-gradient-to-r ${done ? 'from-emerald-700 to-emerald-800' : 'from-slate-700 to-slate-800'} text-white transition-colors`}>
                     <div className="flex items-start justify-between gap-4">
 
                       <button

@@ -162,6 +162,9 @@ const OrderCreate: React.FC = () => {
   const sel = `${inp} appearance-none pr-8`;
   const lbl = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5";
 
+  // Shared dark surface — same classes as the job card list, which builds cleanly
+  const darkBar = "bg-gradient-to-r from-slate-700 to-slate-800";
+
   const customerChosen = !!header.customerId;
 
   return (
@@ -169,7 +172,7 @@ const OrderCreate: React.FC = () => {
       <div className="w-full space-y-6">
 
         {/* ── Page header ── */}
-        <div className="bg-[#0f172a] rounded-xl p-6 flex items-center justify-between shadow-lg">
+        <div className={`${darkBar} rounded-xl p-6 flex items-center justify-between shadow-lg`}>
           <div className="flex items-center gap-3">
             <ShoppingCart className="text-sky-400 w-7 h-7" />
             <div>
@@ -187,7 +190,7 @@ const OrderCreate: React.FC = () => {
 
         {/* ── Step 1 — order header ── */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="bg-[#0f172a] px-5 py-3 flex items-center gap-2">
+          <div className={`${darkBar} px-5 py-3 flex items-center gap-2`}>
             <span className="bg-sky-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">1</span>
             <h2 className="text-white font-semibold">Order details</h2>
           </div>
@@ -285,7 +288,7 @@ const OrderCreate: React.FC = () => {
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-[#0f172a] px-5 py-3 flex items-center justify-between">
+            <div className={`${darkBar} px-5 py-3 flex items-center justify-between`}>
               <div className="flex items-center gap-2">
                 <span className="bg-sky-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">2</span>
                 <h2 className="text-white font-semibold">Order items</h2>
@@ -453,7 +456,7 @@ const OrderCreate: React.FC = () => {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="bg-[#0f172a] hover:bg-slate-800 text-white px-8 py-3 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50 shadow-lg transition-colors"
+              className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-3 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50 shadow-lg transition-colors"
             >
               {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
               Save order ({money(grandTotal)})

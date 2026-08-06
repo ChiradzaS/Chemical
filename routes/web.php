@@ -247,6 +247,21 @@ Route::get('/chemicalorderlist', function () {
 
 
 
+Route::get('/chemicalmaterial', function () {
+
+    return view('chemicalmaterial'); 
+
+})->name('chemicalmaterial');
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -966,3 +981,13 @@ Route::get('orders/store',         [OrderController::class, 'store']);
 Route::get('orders/completeitem',  [OrderController::class, 'completeItem']);
 Route::get('orders/completeorder', [OrderController::class, 'completeOrder']);
 Route::get('orders/destroy',       [OrderController::class, 'destroy']);
+
+
+
+use App\Http\Controllers\RawMaterialController;
+
+Route::get('/raw-materials',        [RawMaterialController::class, 'index']);
+Route::get('/raw-materials/list',   [RawMaterialController::class, 'list']);
+Route::get('/raw-materials/save',   [RawMaterialController::class, 'save']);
+Route::get('/raw-materials/toggle', [RawMaterialController::class, 'toggle']);
+Route::get('/raw-materials/lookup', [RawMaterialController::class, 'lookup']);
