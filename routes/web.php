@@ -374,7 +374,7 @@ Route::post('/productions/changestate',[ProductionController::class,'changestate
 Route::post('/productions/changestat',[ProductionController::class,'changestat'])->name('changestat');
 Route::post('/productions/complete',[ProductionController::class,'complete'])->name('complete');
 Route::post('/setprices/getConstants',[PriceUpdateController::class,'getConstants'])->name('getConstants');
-Route::resource('formulas',FormulaController::class);
+
 Route::post('/productions/generate', [ProductionController::class, 'generate'])->name('generate');
 Route::resource('productionitems', ProductionitemController::class);
 Route::resource('prices', ProductpricingController::class);
@@ -991,3 +991,13 @@ Route::get('/raw-materials/list',   [RawMaterialController::class, 'list']);
 Route::get('/raw-materials/save',   [RawMaterialController::class, 'save']);
 Route::get('/raw-materials/toggle', [RawMaterialController::class, 'toggle']);
 Route::get('/raw-materials/lookup', [RawMaterialController::class, 'lookup']);
+
+
+
+
+Route::get('/formulas',           [FormulaController::class, 'index']);
+Route::get('/formulas/list',      [FormulaController::class, 'list']);
+Route::get('/formulas/show',      [FormulaController::class, 'show']);
+Route::get('/formulas/save',      [FormulaController::class, 'save']);
+Route::get('/formulas/products',  [FormulaController::class, 'products']);
+Route::get('/formulas/materials', [FormulaController::class, 'materials']);

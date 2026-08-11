@@ -27,49 +27,16 @@ public function index(Request $request)
 
         $searchTerm = $request->input('searchInput');
 
-
-    
-      
-       
-      
         $customerIdComp = '<>';
         if ( $searchTerm <> null) {
          
           $customerIdComp = 'Like';
         } 
-    
-       
-      
-          
-      
-        
+
         $data['types'] = Type::where('name',''.$customerIdComp,'%'.$searchTerm.'%')->get();
-                                     // ->where('groupType',''.$customerIdComp,'%'.$searchTerm.'%')                             
-                                      //->orderBy('id','desc')->paginate(500);
-      
+
                                       return view('types.index', $data);
         }
-   
-
-          // $response = Http::get($url.'/qrytype/index');
-  
-  
-          //   if ($response->successful()) {
-                
-          //       $data = json_decode($response);
-
-            
-
-            
-          //       return  view('types.index ', ['data' => $data] );
-            
-          //   } else {
-                
-          //       dd('Sorry , there an error with your request');
-            
-          //   }
-
-
 
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
               try {
@@ -77,18 +44,12 @@ public function index(Request $request)
                   $response = Http::timeout(10) // Set a timeout of 10 seconds
                                     ->retry(3, 1000) // Retry 3 times with a 1-second delay
                                     ->get($url.'/qrytype/index');
-            
-                  //$data['info'] = json_decode($response, true);
-              
+
                   // Check if the request was successful
                   if ($response->successful() ){
-            
-                     
+
                     $data = json_decode($response);
 
-            
-
-            
                     return  view('types.index ', ['data' => $data] );
             
                   } else {
@@ -104,12 +65,7 @@ public function index(Request $request)
                   return view('errorpage', [
                     'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
                 ]);
-            
-                  // If this is the last attempt, return an error message
-                  // if ($attempt === $maxRetries) {
-                  //     return dd('Sorry, there was an error with your request after ' . $maxRetries . ' attempts.');
-                  // }
-            
+
                   if ($attempt === $maxRetries) {
                     return view('errorpage', [
                         'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
@@ -142,6 +98,8 @@ public function store(Request $request)
     $request->validate([
         'name' => 'required',
         'groupType' => 'required',
+        // decimals allowed: 0.500 is a 500 ml container size
+        'value' => 'nullable|string|max:50',
     ]);
 
     $type = new Type();
@@ -149,9 +107,11 @@ public function store(Request $request)
     $type->groupType = $request->groupType;
 
     // Use request value, otherwise default to 1
-    $type->value = $request->filled('value') ? $request->value : 1;
+    $type->value = $request->filled('value') ? $this->normaliseValue($request->value) : 1;
 
-    $type->description = $request->filled('value') ? $request->value : $type->name ;
+    // description was previously copied from `value`, which left every sized
+    // row described as a bare number — the name is the sensible fallback
+    $type->description = $request->filled('description') ? $request->description : $type->name;
     $type->level = null;
     $type->parentKey = null;
     $type->topValue = null;
@@ -167,6 +127,25 @@ public function store(Request $request)
         ->route('types.index')
         ->with('success', 'Type created successfully.');
 }
+
+/**
+* A comma decimal ("0,500") is a common typo and parses as NaN downstream,
+* so it is corrected here. Non-numeric values pass through untouched, since
+* this column holds plain text for some group types.
+*/
+private function normaliseValue($value)
+{
+    $trimmed = trim((string) $value);
+
+    if ($trimmed === '') {
+        return $trimmed;
+    }
+
+    $candidate = str_replace(',', '.', $trimmed);
+
+    return is_numeric($candidate) ? $candidate : $trimmed;
+}
+
 /**
 * Display the specified resource.
 *
@@ -196,25 +175,29 @@ return view('types.edit',compact('type'));
 */
 public function update(Request $request, $id)
 {
+    /* Only name and groupType are genuinely required. The rest were marked
+       required but are left blank on most rows, so every edit was failing
+       validation before it reached the database. */
     $request->validate([
     'name' => 'required',
-    'description' => 'required',
-    'value' => 'required',
-    'level' => 'required',
-    'parentKey' => 'required',
     'groupType' => 'required',
-    'topValue' => 'required',
-    'childType' => 'required',
-    'label' => 'required',
+    'description' => 'nullable|string',
+    'value' => 'nullable|string|max:50',
+    'level' => 'nullable|integer',
+    'parentKey' => 'nullable|integer',
+    'topValue' => 'nullable|integer',
+    'childType' => 'nullable|string|max:100',
+    'label' => 'nullable|string|max:100',
     ]);
 
+    $value = $this->normaliseValue($request->value);
 
     $data = [
    
         'id' => $id,
         'name' => $request->name,
         'description' => $request->description,
-        'value' => $request->value,
+        'value' => $value,
         'level' => $request->level,
         'parentKey' => $request->parentKey,
         'groupType' => $request->groupType,
@@ -232,38 +215,6 @@ public function update(Request $request, $id)
       $url = env('APP_URL');
       $maxRetries = 3; 
       $retryDelay = 2;
-      
-      
-      // $response = Http::get($url.'/qrytype/update',$data);
-      
-      
-      // if ($response->successful()) {
-       
-      //   $orderId = $response->json($response); 
-
-      //   $type = Type::find($id);
-      //   $type->name         = $request->input('name');
-      //   $type->description  = $request->input('description');
-      //   $type->value        = $request->input('value');
-      //   $type->level        = $request->input('level') ;
-      //   $type->parentKey    = $request->input('parentKey');
-      //   $type->groupType    = $request->input('groupType');
-      //   $type->topValue     = $request->input('topValue') ?? 0;
-      //   $type->childType    = $request->input('childType');
-      //   $type->userId       = $request->input('userId');
-      //   $type->start_time   = $request->input('start_time');
-      //   $type->end_time     = $request->input('end_time');
-      //   $type->label        = $request->input('lable')?? 0;
-      //   $type->save();
-        
-      //   return redirect()->route('types.index')->with('success','Update successfully');
-      
-      // } else {
-        
-      //   dd('Sorry , there an error with your request . Please try again');
-      
-      // }
-
 
       for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
         try {
@@ -271,28 +222,28 @@ public function update(Request $request, $id)
             $response = Http::timeout(10) // Set a timeout of 10 seconds
                               ->retry(3, 1000) // Retry 3 times with a 1-second delay
                               ->get($url.'/qrytype/update',$data);
-      
-            //$data['info'] = json_decode($response, true);
-        
+
             // Check if the request was successful
             if ($response->successful() ){
-      
-                 
+
         $orderId = $response->json($response); 
 
         $type = Type::find($id);
         $type->name         = $request->input('name');
         $type->description  = $request->input('description');
-        $type->value        = $request->input('value');
+        $type->value        = $value;
         $type->level        = $request->input('level') ;
         $type->parentKey    = $request->input('parentKey');
         $type->groupType    = $request->input('groupType');
         $type->topValue     = $request->input('topValue') ?? 0;
         $type->childType    = $request->input('childType');
-        $type->userId       = $request->input('userId');
+        // userId comes from the session — it is not a form field, and reading
+        // it from the request wrote null on every update
+        $type->userId       = Auth::id();
         $type->start_time   = $request->input('start_time');
         $type->end_time     = $request->input('end_time');
-        $type->label        = $request->input('lable')?? 0;
+        // the form field is `label`; reading `lable` always came back null
+        $type->label        = $request->input('label');
         $type->save();
         
         return redirect()->route('types.index')->with('success','Update successfully');
@@ -310,12 +261,7 @@ public function update(Request $request, $id)
             return view('errorpage', [
               'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
           ]);
-      
-            // If this is the last attempt, return an error message
-            // if ($attempt === $maxRetries) {
-            //     return dd('Sorry, there was an error with your request after ' . $maxRetries . ' attempts.');
-            // }
-      
+
             if ($attempt === $maxRetries) {
               return view('errorpage', [
                   'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
@@ -346,8 +292,6 @@ return redirect()->route('types.index')
 
 public function clone(Request $request)
 {
-
-
     $product = $request->productid;
 
     $grouptype = $request->input('productId');
@@ -357,39 +301,6 @@ public function clone(Request $request)
     $response['data'] = $type ;
 
     return response()->json($response);
-
- 
-
-    // $data = [
-
-    //    'productId' => $product
-
-    // ];
-
-   
-
-           
-    //  $url = env('APP_URL1');
-      
-      
-    //  $response = Http::get($url.'/qrytype/clon',$data);
-
-    //  Log::info($response);
-     
-  
-    //  if ($response->successful()) {
-         
-      
-    //   return response()->json($response);
-
-
-    //  } else {
-       
-    //    dd('Sorry , there an error with your request . Please try again');
-     
-    //  }
-
-
 }
 
 
@@ -402,42 +313,14 @@ public function actionview(Request $request) {
     $url = env('APP_URL1');
   $maxRetries = 3; 
   $retryDelay = 2; 
-  
-  
-    
-    // $response = Http::get($url.'/qryjobcards/show?id='.$id);
-     
-     
-    // if ($response->successful()) {
-   
-    //  $jsonResponse = json_decode( $response, true);
-    
-  
-    //  $product = $jsonResponse['product'] ?? null;
-    //  $jobcarditem = $jsonResponse['jobcarditems'] ?? null;
-    //  $jobcard = $jsonResponse['jobcard'] ?? null;
-    //  //dd($product);
-  
-     
-    
-    //   return view('job_cards.edit',['product' => $product,  'jobcarditems' =>  $jobcarditem   ,  'job_card' =>  $jobcard ]);
-  
-    // } else {
-        
-    //     dd('Sorry , there an error with your request');
-    
-    // }
 
-    
   for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
     try {
         // Make the HTTP request
         $response = Http::timeout(10) // Set a timeout of 10 seconds
                           ->retry(3, 1000) // Retry 3 times with a 1-second delay
                           ->get($url.'/qryjobcards/show?id='.$id);
-  
-        //$data['info'] = json_decode($response, true);
-    
+
         // Check if the request was successful
         if ($response->successful() ){
   
@@ -447,10 +330,7 @@ public function actionview(Request $request) {
      $product = $jsonResponse['product'] ?? null;
      $jobcarditem = $jsonResponse['jobcarditems'] ?? null;
      $jobcard = $jsonResponse['jobcard'] ?? null;
-     //dd($product);
-  
-     
-    
+
       return view('job_cards.edit',['product' => $product,  'jobcarditems' =>  $jobcarditem   ,  'job_card' =>  $jobcard ]);
   
         } else {
@@ -466,12 +346,7 @@ public function actionview(Request $request) {
         return view('errorpage', [
           'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
       ]);
-  
-        // If this is the last attempt, return an error message
-        // if ($attempt === $maxRetries) {
-        //     return dd('Sorry, there was an error with your request after ' . $maxRetries . ' attempts.');
-        // }
-  
+
         if ($attempt === $maxRetries) {
           return view('errorpage', [
               'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
@@ -485,15 +360,6 @@ public function actionview(Request $request) {
   
   }
    
-   
-   
-   
-   
-   
-   
-   
-   
-   
    public function actionupdate(Request $request) {
    
      $id =  $request->job;
@@ -502,35 +368,6 @@ public function actionview(Request $request) {
      $url = env('APP_URL1');
      $maxRetries = 3; 
      $retryDelay = 2; 
-   
-  
-     
-   
-   
-     
-    //  $response = Http::get($url.'/qryjobcards/show?id='.$id);
-      
-      
-    //  if ($response->successful()) {
-    
-    //   $jsonResponse = json_decode( $response, true);
-     
-  
-    //   $product = $jsonResponse['product'] ?? null;
-    //   $jobcarditem = $jsonResponse['jobcarditems'] ?? null;
-    //   $jobcard = $jsonResponse['jobcard'] ?? null;
-    
-  
-      
-     
-    //    return view('job_cards.edit',['product' => $product,  'jobcarditems' =>  $jobcarditem   ,  'job_card' =>  $jobcard ]);
-   
-    //  } else {
-         
-    //      dd('Sorry , there an error with your request');
-     
-    //  }
-
 
      for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
       try {
@@ -538,9 +375,7 @@ public function actionview(Request $request) {
           $response = Http::timeout(10) // Set a timeout of 10 seconds
                             ->retry(3, 1000) // Retry 3 times with a 1-second delay
                             ->get($url.'/qryjobcards/show?id='.$id);
-    
-          //$data['info'] = json_decode($response, true);
-      
+
           // Check if the request was successful
           if ($response->successful() ){
     
@@ -550,10 +385,7 @@ public function actionview(Request $request) {
             $product = $jsonResponse['product'] ?? null;
             $jobcarditem = $jsonResponse['jobcarditems'] ?? null;
             $jobcard = $jsonResponse['jobcard'] ?? null;
-          
-        
-            
-           
+
              return view('job_cards.edit',['product' => $product,  'jobcarditems' =>  $jobcarditem   ,  'job_card' =>  $jobcard ]);
     
           } else {
@@ -569,12 +401,7 @@ public function actionview(Request $request) {
           return view('errorpage', [
             'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
         ]);
-    
-          // If this is the last attempt, return an error message
-          // if ($attempt === $maxRetries) {
-          //     return dd('Sorry, there was an error with your request after ' . $maxRetries . ' attempts.');
-          // }
-    
+
           if ($attempt === $maxRetries) {
             return view('errorpage', [
                 'message' => 'Sorry, there was an error with your request after ' . $maxRetries . ' attempts.'
@@ -588,11 +415,6 @@ public function actionview(Request $request) {
    
    }
    
-   
-   
-   
-   
-   
    public function actiondelete(Request $request) {
    
      $id =  $request->job;
@@ -600,34 +422,6 @@ public function actionview(Request $request) {
      $url = env('APP_URL1');
      $maxRetries = 3; 
      $retryDelay = 2; 
-   
-  
-   
-   
-    //  $service_url = $url.'/qryjobcards/destroy?id='.$id;
-    //  $curl = curl_init($service_url);
-    //  curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-    //  $curl_response = curl_exec($curl);
-   
-     
-    //  if ($curl_response === '1') {
-        
-   
-  
-   
-   
-    //    return redirect()->route('job_cards.index')
-    //    ->with('success','Order successfully been deleted');
-   
-   
-     
-    //  } else {
-         
-    //      dd('Sorry , there an error with your request');
-     
-    //  }
-
-
 
      for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
       try {

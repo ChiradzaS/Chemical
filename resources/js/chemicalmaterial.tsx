@@ -19,6 +19,7 @@ interface RawMaterial {
   name:           string;
   material_type:  string;
   uom:            string;
+  cost_per_kg:    number | string | null;   // MySQL hands DECIMAL back as a string
   stock_on_hand:  number;
   reorder_level:  number;
   allow_negative: boolean | number;
@@ -34,6 +35,7 @@ const BLANK: RawMaterial = {
   name: '',
   material_type: '',
   uom: '',
+  cost_per_kg: null,
   stock_on_hand: 0,
   reorder_level: 0,
   allow_negative: false,
@@ -43,6 +45,18 @@ const BLANK: RawMaterial = {
 
 const truthy = (v: any) => v === true || Number(v) === 1;
 const int    = (v: any) => Math.trunc(Number(v ?? 0)) || 0;
+
+// blank stays blank — an empty cost must not be saved as 0
+const money = (v: any) =>
+  v === null || v === undefined || v === '' || !Number.isFinite(Number(v))
+    ? null
+    : Number(v);
+
+// "28.5000" from the database → "28.5" for a 2dp input box
+const toCostInput = (v: any) => {
+  const n = money(v);
+  return n === null ? '' : String(Math.round(n * 100) / 100);
+};
 
 const RawMaterialList: React.FC = () => {
   // ── Blade-injected globals ────────────────────────────────────────────────
@@ -55,8 +69,9 @@ const RawMaterialList: React.FC = () => {
   const [busy,      setBusy]      = useState<number | null>(null);
   const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const [form,   setForm]   = useState<RawMaterial>({ ...BLANK, uom: unitTypes[0]?.name ?? '' });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [form,      setForm]      = useState<RawMaterial>({ ...BLANK, uom: unitTypes[0]?.name ?? '' });
+  const [costInput, setCostInput] = useState('');   // kept as text so decimals type cleanly
+  const [errors,    setErrors]    = useState<Record<string, string>>({});
 
   const editing = form.id !== null;
 
@@ -86,13 +101,28 @@ const RawMaterialList: React.FC = () => {
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
+  const clearError = (key: string) =>
+    setErrors(e => { const { [key]: _drop, ...rest } = e; return rest; });
+
   const setField = (key: keyof RawMaterial, value: any) => {
     setForm(f => ({ ...f, [key]: value }));
-    setErrors(e => { const { [key]: _drop, ...rest } = e; return rest; });
+    clearError(key as string);
+  };
+
+  // sanitise rather than reject — a rejecting guard can trap the field on a
+  // value the regex doesn't like, and then no keystroke ever gets through
+  const setCost = (raw: string) => {
+    const cleaned = raw
+      .replace(/[^\d.]/g, '')              // drop letters, R, spaces, commas
+      .replace(/(\..*)\./g, '$1')          // keep only the first dot
+      .replace(/^(\d*\.\d{2})\d+$/, '$1'); // clamp to two decimals
+    setCostInput(cleaned);
+    clearError('cost_per_kg');
   };
 
   const resetForm = () => {
     setForm({ ...BLANK, uom: form.uom || unitTypes[0]?.name || '', material_type: form.material_type });
+    setCostInput('');
     setErrors({});
   };
 
@@ -102,10 +132,15 @@ const RawMaterialList: React.FC = () => {
     if (!form.name.trim())   e.name          = 'Enter a name';
     if (!form.material_type) e.material_type = 'Choose a type';
     if (!form.uom)           e.uom           = 'Choose a unit';
+
+    const c = costInput.trim();
+    if (c !== '' && (!Number.isFinite(Number(c)) || Number(c) < 0)) {
+      e.cost_per_kg = 'Enter a valid amount';
+    }
     return e;
   };
 
-  // every required field filled — drives the save button
+  // every required field filled — drives the save button (cost is optional)
   const canSave = !!form.code.trim()
                && !!form.name.trim()
                && !!form.material_type
@@ -126,6 +161,7 @@ const RawMaterialList: React.FC = () => {
         ...form,
         code:          form.code.trim(),
         name:          form.name.trim(),
+        cost_per_kg:   money(costInput.trim()),
         stock_on_hand: int(form.stock_on_hand),
         reorder_level: int(form.reorder_level),
       };
@@ -170,6 +206,7 @@ const RawMaterialList: React.FC = () => {
 
   const startEdit = (m: RawMaterial) => {
     setForm(m);
+    setCostInput(toCostInput(m.cost_per_kg));
     setErrors({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -304,7 +341,25 @@ const RawMaterialList: React.FC = () => {
               <p className="text-xs text-slate-400 mt-1">0 means no warning</p>
             </div>
 
-            <div className="lg:col-span-5">
+            <div>
+              <label className={lbl}>Cost per kg</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">R</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={costInput}
+                  onChange={e => setCost(e.target.value)}
+                  placeholder="0.00"
+                  className={`${errors.cost_per_kg ? bad : inp} pl-7`}
+                />
+              </div>
+              {errors.cost_per_kg
+                ? <p className="text-xs text-red-600 mt-1">{errors.cost_per_kg}</p>
+                : <p className="text-xs text-slate-400 mt-1">Optional</p>}
+            </div>
+
+            <div className="lg:col-span-4">
               <label className={lbl}>Notes</label>
               <input
                 type="text"
@@ -363,6 +418,7 @@ const RawMaterialList: React.FC = () => {
                     <th className="text-left px-3 py-2.5 font-semibold">Chemical type</th>
                     <th className="text-right px-3 py-2.5 font-semibold">On hand</th>
                     <th className="text-right px-3 py-2.5 font-semibold">Reorder at</th>
+                    <th className="text-right px-3 py-2.5 font-semibold">Cost/kg</th>
                     <th className="text-left px-3 py-2.5 font-semibold">Notes</th>
                     <th className="w-40 px-3 py-2.5"></th>
                   </tr>
@@ -372,6 +428,7 @@ const RawMaterialList: React.FC = () => {
                     const active  = truthy(m.is_active);
                     const stock   = int(m.stock_on_hand);
                     const reorder = int(m.reorder_level);
+                    const cost    = money(m.cost_per_kg);
                     const low     = reorder > 0 && stock <= reorder;
                     const busyMe  = busy === m.id;
 
@@ -398,6 +455,9 @@ const RawMaterialList: React.FC = () => {
                         </td>
                         <td className="px-3 py-3 text-right text-slate-500">
                           {reorder > 0 ? reorder : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-600 tabular-nums">
+                          {cost !== null && cost > 0 ? `R ${cost.toFixed(2)}` : '—'}
                         </td>
                         <td className="px-3 py-3 text-slate-400 text-xs max-w-xs truncate">{m.notes || '—'}</td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">

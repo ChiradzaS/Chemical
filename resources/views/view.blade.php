@@ -396,7 +396,7 @@ footer {
   {{-- Reporting --}}
   <li class='active has-sub'><a href='#'><span>Supply</span></a>
     <ul>
-      <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Add Supply</span></a></li>
+      <li><a href="#" onclick="myFunc1('formulas')"><span>Chemical Formulas</span></a></li>
       <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Supply Stock</span></a></li>
       <li><a href="#" onclick="myFunc1('chemicalmaterial')"><span>Raw Material</span></a></li>
     </ul>

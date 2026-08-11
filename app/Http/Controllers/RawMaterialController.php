@@ -19,7 +19,12 @@ class RawMaterialController extends Controller
                 ->orderBy('id')
                 ->get();
 
-        return view('chemical.rawmaterial', compact('unittypes'));
+        $materialtypes = DB::table('types')
+                ->where('groupType', 'ChemicalMaterialType')
+                ->orderBy('id')
+                ->get();
+
+        return view('chemical.rawmaterial', compact('unittypes', 'materialtypes'));
     }
 
     /* ------------------------------------------------------------------
@@ -60,11 +65,18 @@ class RawMaterialController extends Controller
     {
         $payload = json_decode($request->query('data', '{}'), true) ?: [];
 
+        // an untouched cost box arrives as '' or null — both mean "not priced",
+        // and '' would fail the numeric rule below
+        if (array_key_exists('cost_per_kg', $payload) && $payload['cost_per_kg'] === '') {
+            $payload['cost_per_kg'] = null;
+        }
+
         $validator = Validator::make($payload, [
             'code'           => 'required|string|max:50',
             'name'           => 'required|string|max:150',
             'material_type'  => 'nullable|string|max:50',
             'uom'            => 'required|string|max:10',
+            'cost_per_kg'    => 'nullable|numeric|min:0|max:99999999',
             'stock_on_hand'  => 'nullable|numeric|min:0',
             'reorder_level'  => 'nullable|numeric|min:0',
             'allow_negative' => 'nullable|boolean',
@@ -102,6 +114,10 @@ class RawMaterialController extends Controller
                 'name'           => trim($payload['name']),
                 'material_type'  => trim($payload['material_type'] ?? '') ?: null,
                 'uom'            => $payload['uom'],
+                // null means unpriced — distinct from a real cost of 0
+                'cost_per_kg'    => isset($payload['cost_per_kg'])
+                                        ? (float) $payload['cost_per_kg']
+                                        : null,
                 'reorder_level'  => $payload['reorder_level'] ?? 0,
                 'allow_negative' => !empty($payload['allow_negative']) ? 1 : 0,
                 'is_active'      => isset($payload['is_active'])
@@ -181,7 +197,7 @@ class RawMaterialController extends Controller
                 $q->where('material_type', $type);
             })
             ->orderBy('name')
-            ->get(['id', 'code', 'name', 'material_type', 'uom', 'stock_on_hand']);
+            ->get(['id', 'code', 'name', 'material_type', 'uom', 'cost_per_kg', 'stock_on_hand']);
 
         return response()->json($rows);
     }

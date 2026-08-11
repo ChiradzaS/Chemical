@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -98,13 +97,23 @@
                         @enderror
                     </div>
 
-                    <!-- Value -->
+                    <!-- Value.
+                         type="text" on purpose: a number input rejects decimals
+                         unless a step is set, and rejects the plain text that
+                         other group types keep in this same column. -->
                     <div class="col-md-6">
                         <label class="form-label">Value</label>
                         <input type="text"
                                name="value"
+                               id="valueField"
+                               inputmode="decimal"
+                               autocomplete="off"
                                value="{{ old('value', $type->value) }}"
                                class="form-control">
+
+                        <div class="form-text" id="valueHint">
+                            Decimals allowed — 0.500 means 500 ml
+                        </div>
 
                         @error('value')
                             <div class="text-danger mt-1">{{ $message }}</div>
@@ -115,6 +124,7 @@
                     <div class="col-md-6">
                         <label class="form-label">Level</label>
                         <input type="number"
+                               step="1"
                                name="level"
                                value="{{ old('level', $type->level) }}"
                                class="form-control">
@@ -128,6 +138,7 @@
                     <div class="col-md-6">
                         <label class="form-label">Parent Key</label>
                         <input type="number"
+                               step="1"
                                name="parentKey"
                                value="{{ old('parentKey', $type->parentKey) }}"
                                class="form-control">
@@ -141,6 +152,7 @@
                     <div class="col-md-6">
                         <label class="form-label">Top Value</label>
                         <input type="number"
+                               step="any"
                                name="topValue"
                                value="{{ old('topValue', $type->topValue) }}"
                                class="form-control">
@@ -226,6 +238,39 @@
 
 </div>
 
+<script>
+    // A comma decimal ("0,500") is a common typo on a local keyboard and parses
+    // as NaN downstream, so it is corrected as soon as the field is left.
+    (function () {
+        var field = document.getElementById('valueField');
+        var hint  = document.getElementById('valueHint');
+        if (!field || !hint) return;
+
+        var defaultHint = hint.textContent;
+
+        field.addEventListener('blur', function () {
+            var raw = field.value.trim();
+
+            if (raw === '') {
+                hint.classList.remove('text-danger');
+                hint.textContent = defaultHint;
+                return;
+            }
+
+            var fixed = raw.replace(',', '.');
+
+            if (/^\d*\.?\d+$/.test(fixed)) {
+                field.value = fixed;
+                hint.classList.remove('text-danger');
+                hint.textContent = defaultHint;
+            } else {
+                // not blocked — some group types legitimately store text here
+                hint.classList.add('text-danger');
+                hint.textContent = 'Not a number. Fine for text values, but container sizes must be numeric.';
+            }
+        });
+    })();
+</script>
+
 </body>
 </html>
-

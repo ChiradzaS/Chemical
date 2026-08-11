@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Save, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Save, ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
 
@@ -29,16 +29,46 @@ interface Viscosity        { id: string; name: string; }
 interface ActiveIngredient { id: string; name: string; }
 interface Fragrance        { id: string; name: string; }
 interface BottleType       { id: string; name: string; }
-interface ContainerSize    { id: string; name: string; }
+interface ContainerSize    { id: string; name: string; value?: string | number | null; }
 interface CapType          { id: string; name: string; }
 interface LableType        { id: string; name: string; }
+
+// Formulas come from the formula builder
+interface FormulaOption {
+  id:                number;
+  code:              string;
+  name:              string;
+  density_kg_per_l?: number | string | null;
+}
+
+// Raw materials, used to resolve ingredient names on the formula panel
+interface MaterialRow {
+  id:           number;
+  code:         string;
+  name:         string;
+  uom:          string;
+  cost_per_kg?: number | string | null;
+}
+
+// One ingredient row as returned by formulas/show
+interface FormulaItem {
+  id:              number;
+  raw_material_id: number;
+  percentage:      number | string;
+  uom:             string;
+  is_balance:      number | boolean;
+  sequence?:       number;
+}
 
 const API_BASE = window.laravelApiUrl || 'http://localhost/Chemical';
 const LIST_URL = `${API_BASE}/chemicalproductlist`;
 const VAT_RATE = 15;
 
-// Density assumption used by the formula-derived weight
-const DENSITY_G_PER_L = 1020;
+// Fallback only — the real figure comes off the selected formula
+const DEFAULT_DENSITY_KG_PER_L = 1;
+
+// Formulas are written against a 1000 kg batch; used to turn % into kg
+const FORMULA_BASE_QTY = 1000;
 
 type WeightSource = 'formula' | 'manual';
 
@@ -160,6 +190,33 @@ const RI = (err: boolean) => `${I} ${err ? '!border-red-400 !bg-red-100 focus:!r
 // Emphasis modifier for the primary field (product name)
 const BIG = "!text-base !py-2.5 !px-3 font-semibold";
 
+const numOrNull = (v: any): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/* Container size → litres.
+   The `value` column is authoritative when present (0.500 means half a litre).
+   Otherwise the name is parsed, since sizes are often only labelled: "500ml",
+   "5 L", "0.750". A bare number is read as litres, matching the value column. */
+const containerLitres = (c?: ContainerSize): number | null => {
+  if (!c) return null;
+
+  const fromValue = numOrNull(c.value);
+  if (fromValue !== null && fromValue > 0) return fromValue;
+
+  const raw = String(c.name ?? '').trim().toLowerCase();
+  const match = raw.match(/([\d.,]+)\s*(ml|l|lt|ltr|litre|liter)?/);
+  if (!match) return null;
+
+  const qty = Number(match[1].replace(',', '.'));
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+
+  // ml is the only unit that isn't already litres
+  return match[2] === 'ml' ? qty / 1000 : qty;
+};
+
 const L = ({ t, required }: { t: string; required?: boolean }) => (
   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
     {t}{required && <span className="text-red-400 ml-0.5">*</span>}
@@ -233,6 +290,31 @@ const ProductForm: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // ── Formulas + the selected formula's ingredients ──
+  const [formulas,     setFormulas]     = useState<FormulaOption[]>([]);
+  const [materials,    setMaterials]    = useState<MaterialRow[]>([]);
+  const [items,        setItems]        = useState<FormulaItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError,   setItemsError]   = useState<string | null>(null);
+  const [baseQty,      setBaseQty]      = useState<number>(FORMULA_BASE_QTY);
+  const [priceInput,   setPriceInput]   = useState('');
+  const [priceFocused, setPriceFocused] = useState(false);
+  const [priceInclInput,   setPriceInclInput]   = useState('');
+  const [priceInclFocused, setPriceInclFocused] = useState(false);
+
+  useEffect(() => {
+    // materials resolve ingredient ids to names for the panel below
+    Promise.all([
+      axios.get(`${API_BASE}/formulas/list`),
+      axios.get(`${API_BASE}/formulas/materials`),
+    ])
+      .then(([f, m]) => {
+        setFormulas(Array.isArray(f.data) ? f.data : []);
+        setMaterials(Array.isArray(m.data) ? m.data : []);
+      })
+      .catch(() => { setFormulas([]); setMaterials([]); });
+  }, []);
+
   useEffect(() => {
     if (!productId) return;
     setLoading(true);
@@ -242,6 +324,36 @@ const ProductForm: React.FC = () => {
       .catch(() => flash('Failed to load product', false))
       .finally(() => setLoading(false));
   }, [productId]);
+
+  const pickedFormula = formulas.find(f => f.code === form.formulaCode);
+
+  // Fetch the ingredients whenever the resolved formula changes. Keyed on the
+  // id rather than the object so a re-fetch of the list doesn't re-trigger it.
+  const pickedFormulaId = pickedFormula?.id ?? null;
+
+  useEffect(() => {
+    if (!pickedFormulaId) { setItems([]); setItemsError(null); return; }
+
+    let cancelled = false;
+    setItemsLoading(true);
+    setItemsError(null);
+
+    const encodedData = encodeURIComponent(JSON.stringify({ id: pickedFormulaId }));
+    axios.get(`${API_BASE}/formulas/show?data=${encodedData}`)
+      .then(r => {
+        if (cancelled) return;
+        if (r.data?.status === 'error') throw new Error(r.data.message);
+        setItems(Array.isArray(r.data?.items) ? r.data.items : []);
+        // a formula written against a different base must not be read as 1000
+        const base = numOrNull(r.data?.formula?.base_batch_qty);
+        setBaseQty(base && base > 0 ? base : FORMULA_BASE_QTY);
+      })
+      .catch(() => { if (!cancelled) { setItems([]); setItemsError('Could not load the ingredients'); } })
+      .finally(() => { if (!cancelled) setItemsLoading(false); });
+
+    // a fast second pick must not have its response overwrite the newer one
+    return () => { cancelled = true; };
+  }, [pickedFormulaId]);
 
   useEffect(() => {
     if (!form.invoiceDescriptionOverridden)
@@ -264,22 +376,87 @@ const ProductForm: React.FC = () => {
 
   const missing = (v: string) => submitted && !v.trim();
 
-  // Formula-derived unit weight, in kg
-  const calcWeightKg = (() => {
-    const litres = parseFloat(form.batchSizeLitres);
-    const units  = parseFloat(form.unitsPerBatch);
-    const yield_ = parseFloat(form.yieldPercentage) / 100 || 0.95;
-    if (!litres || !units) return null;
-    return ((litres * DENSITY_G_PER_L * yield_) / units / 1000).toFixed(3);
-  })();
+  const materialOf = (id: number) => materials.find(m => Number(m.id) === Number(id));
 
-  // Saved exactly as entered — 12 kg is stored as 12
+  /* ── Recipe cost ──
+     Each ingredient's kg for the batch × its cost per kg. A material with no
+     price on file contributes nothing and is counted as unpriced, so a partial
+     total is never presented as if it were complete. */
+  const priceOf = (id: number) => {
+    const c = numOrNull(materialOf(id)?.cost_per_kg);
+    return c !== null && c > 0 ? c : null;
+  };
+
+  const lineKg   = (pct: number) => baseQty * pct / 100;
+  const lineCost = (it: FormulaItem) => {
+    const rate = priceOf(it.raw_material_id);
+    return rate === null ? null : lineKg(numOrNull(it.percentage) ?? 0) * rate;
+  };
+
+  const unpricedCount = items.filter(it => priceOf(it.raw_material_id) === null).length;
+  const batchCost     = items.reduce((s, it) => s + (lineCost(it) ?? 0), 0);
+  const costPerKg     = baseQty > 0 ? batchCost / baseQty : 0;
+  // Density comes off the formula. Falls back to water when unset.
+  const density = numOrNull(pickedFormula?.density_kg_per_l) ?? DEFAULT_DENSITY_KG_PER_L;
+
+  // The chosen package, in litres
+  const pickedContainer = containerSizes.find(c => String(c.id) === String(form.stockUnitId));
+  const unitLitres      = containerLitres(pickedContainer);
+
+  // Unit weight = what the container holds × how heavy that liquid is.
+  // kg/L × L gives kg directly — no /1000.
+  const calcWeightKg = unitLitres === null
+    ? null
+    : (unitLitres * density).toFixed(3);
+
+  // Whatever sits in the input is what gets saved — in container mode the
+  // effect above keeps it equal to the calculation
   const weightForSave = (() => {
-    const kg = form.weightSource === 'manual'
-      ? parseFloat(form.weightPerUnitKg)
-      : parseFloat(calcWeightKg ?? '');
+    const kg = parseFloat(form.weightPerUnitKg);
     return Number.isFinite(kg) && kg > 0 ? kg : null;
   })();
+
+  // Picking a formula switches to container-derived weight, but only the first
+  // time — an operator who then chooses manual must not be flipped back
+  const [weightModeTouched, setWeightModeTouched] = useState(false);
+
+  useEffect(() => {
+    if (pickedFormula && !weightModeTouched && form.weightSource !== 'formula') {
+      setForm(f => ({ ...f, weightSource: 'formula' }));
+    }
+  }, [pickedFormula, weightModeTouched, form.weightSource]);
+
+  // Clearing the formula removes the container option, so the mode must not be
+  // left pointing at a button that is no longer on screen
+  useEffect(() => {
+    if (!pickedFormula && form.weightSource === 'formula') {
+      setForm(f => ({ ...f, weightSource: 'manual', weightPerUnitKg: '' }));
+    }
+  }, [pickedFormula, form.weightSource]);
+
+  // In container mode the input mirrors the calculation, so what gets saved is
+  // exactly what the operator can see in the box
+  useEffect(() => {
+    if (form.weightSource !== 'formula') return;
+    const next = calcWeightKg ?? '';
+    if (next !== form.weightPerUnitKg) {
+      setForm(f => ({ ...f, weightPerUnitKg: next }));
+    }
+  }, [form.weightSource, calcWeightKg, form.weightPerUnitKg]);
+
+  // What one unit of finished product costs to make
+  const unitWeightKg   = numOrNull(form.weightPerUnitKg);
+  const recipeCostUnit = unitWeightKg && unitWeightKg > 0 && costPerKg > 0
+    ? unitWeightKg * costPerKg
+    : null;
+
+  // The same ingredient, scaled to one unit rather than the whole batch:
+  // its share of the unit's weight × its price
+  const lineCostPerUnit = (it: FormulaItem) => {
+    const rate = priceOf(it.raw_material_id);
+    if (rate === null || !unitWeightKg || unitWeightKg <= 0) return null;
+    return unitWeightKg * ((numOrNull(it.percentage) ?? 0) / 100) * rate;
+  };
 
   /* ── Pricing ──
      UI exposes only Cost price + Markup %.
@@ -298,6 +475,52 @@ const ProductForm: React.FC = () => {
   const incl   = excl + vat;
   const mrgn   = excl > 0 ? ((excl - cost) / excl) * 100 : 0;
   const sellingPriceMissing = submitted && (!excl || excl <= 0);
+
+  /* Selling price and markup are two views of one number. Markup is what gets
+     stored, so typing a price back-solves the markup rather than adding a
+     second saved field that could drift out of step with the first. */
+  const markupFromExcl = (price: number) => {
+    if (!Number.isFinite(price) || cost <= 0) return;
+    setForm(f => ({ ...f, markupPercentage: String(Math.round((price / cost - 1) * 10000) / 100) }));
+  };
+
+  const setSellingExcl = (v: string) => {
+    setPriceInput(v);
+    markupFromExcl(parseFloat(v));
+  };
+
+  // Incl. VAT is stripped back to excl. before the markup is worked out, so
+  // both boxes end up driving the same stored figure
+  const setSellingIncl = (v: string) => {
+    setPriceInclInput(v);
+    const incVat = parseFloat(v);
+    if (!Number.isFinite(incVat)) return;
+    markupFromExcl(form.vatApplicable ? incVat / (1 + VAT_RATE / 100) : incVat);
+  };
+
+  // The price boxes follow the markup unless the operator is typing in one
+  useEffect(() => {
+    if (priceFocused) return;
+    const next = excl > 0 ? excl.toFixed(2) : '';
+    setPriceInput(prev => (prev === next ? prev : next));
+  }, [excl, priceFocused]);
+
+  useEffect(() => {
+    if (priceInclFocused) return;
+    const next = incl > 0 ? incl.toFixed(2) : '';
+    setPriceInclInput(prev => (prev === next ? prev : next));
+  }, [incl, priceInclFocused]);
+
+  // Switching to manual clears the field so the operator types their own
+  // figure rather than editing a derived one they may not notice is derived.
+  const setWeightSource = (ws: WeightSource) => {
+    setWeightModeTouched(true);
+    setForm(f => ({
+      ...f,
+      weightSource: ws,
+      weightPerUnitKg: ws === 'manual' ? '' : f.weightPerUnitKg,
+    }));
+  };
 
   const buildPayload = () => ({
     id:                     productId ?? null,
@@ -361,10 +584,10 @@ const ProductForm: React.FC = () => {
     if (!form.bagTypeId)          { flash('Container / bottle type is required', false); return; }
     if (!form.capTypeId)          { flash('Cap type is required', false);            return; }
     if (!form.labelTypeId)        { flash('Label type is required', false);          return; }
-    if (form.weightSource === 'manual' && !form.weightPerUnitKg)
-                                  { flash('Weight per unit is required', false);     return; }
-    if (form.weightSource === 'formula' && !calcWeightKg)
-                                  { flash('Weight per unit could not be calculated — check batch size & units', false); return; }
+    if (!form.weightPerUnitKg)
+                                  { flash(form.weightSource === 'manual'
+                                      ? 'Weight per unit is required'
+                                      : 'Weight per unit could not be calculated — the package size is not readable in litres', false); return; }
     if (!form.shelfLifeMonths)    { flash('Shelf life is required', false);          return; }
     if (!excl || excl <= 0)       { flash('Selling price is required — enter a cost price and markup', false); return; }
 
@@ -561,6 +784,13 @@ const ProductForm: React.FC = () => {
                 ph="Select package…"
                 err={missing(form.stockUnitId)}
               />
+              {form.stockUnitId && (
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  {unitLitres !== null
+                    ? `${unitLitres} L · ${(unitLitres * density).toFixed(3)} kg`
+                    : 'Not readable as litres'}
+                </p>
+              )}
             </div>
           </div>
 
@@ -568,6 +798,131 @@ const ProductForm: React.FC = () => {
             <L t="Internal description / notes" />
             <input className={I} placeholder="Formulation notes, use case…" value={form.description} onChange={ev('description')} />
           </div>
+
+          {/* ── Selected formula: density, then the ingredients ── */}
+          <S icon="🧪" title="Formula makeup" />
+
+          {!pickedFormula ? (
+            <p className="text-xs text-gray-400">
+              Pick a formula in the Formulation column to see its ingredients.
+            </p>
+          ) : (
+            <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
+              {/* Density sits above the list — it governs every kg/L figure below */}
+              <div className="flex items-center justify-between px-3 py-2.5 bg-white border-b border-gray-100">
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Density</p>
+                  <p className="text-lg font-bold font-mono text-gray-800 leading-none mt-0.5">
+                    {density.toFixed(4)} <span className="text-xs font-sans font-normal text-gray-400">kg/L</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Formula</p>
+                  <p className="text-xs font-semibold text-gray-700 mt-0.5">{pickedFormula.name}</p>
+                  <p className="text-[10px] font-mono text-gray-400">
+                    {pickedFormula.code}
+                  </p>
+                </div>
+              </div>
+
+              {numOrNull(pickedFormula.density_kg_per_l) === null && (
+                <p className="px-3 py-1.5 text-[10px] text-amber-700 bg-amber-50 border-b border-amber-100 font-semibold">
+                  No density recorded on this formula — using 1.0000 kg/L
+                </p>
+              )}
+
+              {itemsLoading ? (
+                <div className="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading ingredients…
+                </div>
+              ) : itemsError ? (
+                <p className="px-3 py-4 text-xs text-red-600 font-semibold">{itemsError}</p>
+              ) : items.length === 0 ? null : (
+                <table className="w-full text-xs">
+                  <thead className="text-gray-400 uppercase text-[9px] tracking-wider">
+                    <tr>
+                      <th className="text-left px-3 py-1.5 font-bold">Ingredient</th>
+                      <th className="text-right px-2 py-1.5 font-bold w-14">%</th>
+                      {!!unitWeightKg && unitWeightKg > 0 && (
+                        <th className="text-right px-3 py-1.5 font-bold w-20">Cost</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {items.map(it => {
+                      const m   = materialOf(it.raw_material_id);
+                      const pct = numOrNull(it.percentage) ?? 0;
+                      const bal = Number(it.is_balance) === 1;
+
+                      return (
+                        <tr key={it.id} className="bg-white">
+                          <td className="px-3 py-1.5 text-gray-700">
+                            {m?.name ?? `#${it.raw_material_id}`}
+                            {bal && (
+                              <span className="ml-1.5 text-[9px] font-bold text-blue-600">BAL</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-mono text-gray-600">
+                            {pct.toFixed(2)}
+                          </td>
+                          {!!unitWeightKg && unitWeightKg > 0 && (
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold text-gray-800">
+                              {lineCostPerUnit(it) === null
+                                ? <span className="text-amber-600 font-sans font-medium text-[10px]">no price</span>
+                                : lineCostPerUnit(it)!.toFixed(4)}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {/* A total missing even one ingredient understates the cost, so
+                  nothing is shown until every ingredient carries a price */}
+              {items.length > 0 && unpricedCount > 0 && (
+                <div className="border-t border-gray-200 bg-white px-3 py-2.5">
+                  <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 font-semibold">
+                    {unpricedCount} ingredient{unpricedCount > 1 ? 's have' : ' has'} no cost on
+                    file — add {unpricedCount > 1 ? 'their prices' : 'its price'} to see the recipe cost
+                  </p>
+                </div>
+              )}
+
+              {items.length > 0 && unpricedCount === 0 && batchCost > 0 && (
+                <div className="border-t border-gray-200 bg-white px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Cost per kg
+                      </p>
+                      <p className="text-sm font-bold font-mono text-gray-800 leading-none mt-0.5">
+                        R {costPerKg.toFixed(4)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Cost per unit
+                      </p>
+                      <p className="text-lg font-bold font-mono text-blue-700 leading-none mt-0.5">
+                        {recipeCostUnit === null ? '—' : `R ${recipeCostUnit.toFixed(2)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {recipeCostUnit !== null && (
+                    <button
+                      onClick={() => set('rawMaterialCost')(recipeCostUnit.toFixed(2))}
+                      className="w-full mt-2 text-[10px] font-bold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 rounded py-1.5 transition-colors"
+                    >
+                      Use as cost price
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ═══════════════════════════
@@ -576,11 +931,31 @@ const ProductForm: React.FC = () => {
         <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-y-auto flex flex-col gap-3">
           <S icon="⚗️" title="Formulation" />
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <L t="Formula code" />
-              <input className={I} placeholder="FML-2025-01" value={form.formulaCode} onChange={ev('formulaCode')} />
+          {/* Formulas — list of formula names */}
+          <div>
+            <L t="Formulas" />
+            <div className="relative">
+              <select
+                className={`${I} appearance-none pr-7`}
+                value={form.formulaCode}
+                onChange={ev('formulaCode')}
+              >
+                <option value="">Select formula…</option>
+                {formulas.filter(f => f.code).map(f => (
+                  <option key={f.id} value={f.code}>{f.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {pickedFormula && (
+              <div>
+                <L t="Formula code" />
+                <input className={CI} readOnly value={form.formulaCode} />
+              </div>
+            )}
             <div>
               <L t="pH level (0–14)" />
               <input className={I} type="number" step="0.1" min="0" max="14" placeholder="7.0" value={form.phLevel} onChange={ev('phLevel')} />
@@ -668,45 +1043,54 @@ const ProductForm: React.FC = () => {
           <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
             <L t="Unit weight" required />
             <div className="flex gap-2 mt-1.5 mb-3">
-              {(['manual', 'formula'] as WeightSource[]).map(ws => (
+              {(['manual', 'formula'] as WeightSource[])
+                .filter(ws => ws === 'manual' || !!pickedFormula)
+                .map(ws => (
                 <button
                   key={ws}
-                  onClick={() => set('weightSource')(ws)}
+                  onClick={() => setWeightSource(ws)}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                     form.weightSource === ws
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                       : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'
                   }`}
                 >
-                  {ws === 'manual' ? '✎ Set manually' : '⚗ From formula'}
+                  {ws === 'manual' ? '✎ Set manually' : '⚗ From container'}
                 </button>
               ))}
             </div>
-            {form.weightSource === 'manual' ? (
-              <div>
-                <L t="Weight per unit (kg)" required />
-                <input
-                  className={RI(missing(form.weightPerUnitKg))}
-                  type="number"
-                  step="0.001"
-                  placeholder="12"
-                  value={form.weightPerUnitKg}
-                  onChange={ev('weightPerUnitKg')}
-                />
-              </div>
-            ) : (
-              <div>
-                <L t="Calculated weight (kg)" required />
-                <input
-                  className={submitted && !calcWeightKg ? RI(true) : CI}
-                  readOnly
-                  value={calcWeightKg ?? 'Enter batch size & units above'}
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Batch L × {DENSITY_G_PER_L} g/L × yield% ÷ units ÷ 1000
-                </p>
-              </div>
-            )}
+            <div>
+              <L t="Weight per unit (kg)" required />
+              <input
+                className={
+                  form.weightSource === 'manual'
+                    ? RI(missing(form.weightPerUnitKg))
+                    : (submitted && !form.weightPerUnitKg ? RI(true) : CI)
+                }
+                type="number"
+                step="0.001"
+                placeholder={form.weightSource === 'manual' ? '12' : 'Select a package / unit'}
+                readOnly={form.weightSource !== 'manual'}
+                value={form.weightPerUnitKg}
+                onChange={ev('weightPerUnitKg')}
+              />
+              {form.weightSource === 'manual' ? (
+                <p className="text-[10px] text-gray-400 mt-1">Typed in, saved as entered</p>
+              ) : (
+                <>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {unitLitres !== null
+                      ? `${unitLitres} L × ${density.toFixed(4)} kg/L`
+                      : 'Package size could not be read as litres'}
+                  </p>
+                  {unitLitres !== null && !pickedFormula && (
+                    <p className="text-[10px] text-amber-600 font-semibold mt-0.5">
+                      No formula picked — using 1.0000 kg/L
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -801,6 +1185,39 @@ const ProductForm: React.FC = () => {
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-bold pointer-events-none">%</span>
               </div>
             </div>
+            <div>
+              <L t="Selling excl. VAT (R)" />
+              <input
+                className={I}
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={priceInput}
+                disabled={cost <= 0}
+                onFocus={() => setPriceFocused(true)}
+                onBlur={() => setPriceFocused(false)}
+                onChange={e => setSellingExcl(e.target.value)}
+              />
+            </div>
+            <div>
+              <L t="Selling incl. VAT (R)" />
+              <input
+                className={I}
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={priceInclInput}
+                disabled={cost <= 0}
+                onFocus={() => setPriceInclFocused(true)}
+                onBlur={() => setPriceInclFocused(false)}
+                onChange={e => setSellingIncl(e.target.value)}
+              />
+            </div>
+            <p className="col-span-2 text-[10px] text-gray-400 -mt-1">
+              {cost > 0
+                ? 'Set any one of markup, excl. or incl. — the others follow'
+                : 'Enter a cost price first'}
+            </p>
           </div>
 
           {legacy > 0 && (
