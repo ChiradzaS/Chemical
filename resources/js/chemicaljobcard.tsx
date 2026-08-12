@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Loader2, Package, FlaskConical, Calculator, Pencil, Check, X } from 'lucide-react';
+import {
+  ChevronDown, Loader2, Package, FlaskConical, Calculator, Pencil, Check, X,
+  AlertTriangle,
+} from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
 
@@ -17,6 +20,7 @@ declare global {
     containerSizesData:    { id: number; name: string; value?: number }[];
     processTypesData:      { id: number; name: string }[];
     chemicalTypesData:     { id: number; name: string }[];
+    Swal?:                 any;
   }
 }
 
@@ -26,6 +30,7 @@ interface ChemicalProduct {
   category:              string | null;
   brand:                 string | null;
   sku:                   string | null;
+  formula_code:          string | null;
   stock_unit_id:         number | null;
   colour_id:             number | null;
   viscosity_id:          number | null;
@@ -36,11 +41,38 @@ interface ChemicalProduct {
   batch_size_litres:     number | null;
   units_per_batch:       number | null;
   yield_percentage:      number | null;
-  weight_per_unit_grams: number | null;
+  weight_per_unit_grams: number | null;   // stores kg despite the column name
   price:                 number | null;
   vat_applicable:        number;
   concentration:         number | null;
   dilution_ratio:        string | null;
+}
+
+interface FormulaOption {
+  id:                number;
+  code:              string;
+  name:              string;
+  density_kg_per_l?: number | string | null;
+  base_batch_qty?:   number | string | null;
+}
+
+interface MaterialRow {
+  id:             number;
+  code:           string;
+  name:           string;
+  uom:            string;
+  stock_on_hand:  number | string | null;
+  cost_per_kg?:   number | string | null;
+  allow_negative?: number | boolean;
+}
+
+interface FormulaItem {
+  id:              number;
+  raw_material_id: number;
+  percentage:      number | string;
+  uom:             string;
+  is_balance:      number | boolean;
+  sequence?:       number;
 }
 
 interface ProcessLine {
@@ -57,6 +89,45 @@ const LIST_URL = `${API_BASE}/chemicaljobcardlist`;
 
 const byId = (list: { id: number; name: string }[], id: any) =>
   list.find(x => String(x.id) === String(id))?.name ?? '';
+
+/* SweetAlert when the library is on the page, plain dialogs when it isn't —
+   a missing CDN script should not stop an operator saving a job card. */
+const alertOk = (title: string, text?: string) =>
+  window.Swal
+    ? window.Swal.fire({ icon: 'success', title, text, confirmButtonColor: '#4f46e5' })
+    : Promise.resolve(alert(text ? `${title}\n\n${text}` : title));
+
+const alertWarn = (title: string, text?: string) =>
+  window.Swal
+    ? window.Swal.fire({ icon: 'warning', title, text, confirmButtonColor: '#4f46e5' })
+    : Promise.resolve(alert(text ? `${title}\n\n${text}` : title));
+
+const alertError = (title: string, text?: string) =>
+  window.Swal
+    ? window.Swal.fire({ icon: 'error', title, text, confirmButtonColor: '#4f46e5' })
+    : Promise.resolve(alert(text ? `${title}\n\n${text}` : title));
+
+const confirmAction = async (title: string, html: string, confirmText: string) => {
+  if (!window.Swal) return confirm(`${title}\n\n${html.replace(/<[^>]+>/g, ' ')}`);
+  const res = await window.Swal.fire({
+    icon: 'warning',
+    title,
+    html,
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: 'Go back',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#64748b',
+    reverseButtons: true,
+  });
+  return !!res.isConfirmed;
+};
+
+const numOrNull = (v: any): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 const ChemicalJobCardCreator: React.FC = () => {
   const customers         = window.customersData         || [];
@@ -79,9 +150,14 @@ const ChemicalJobCardCreator: React.FC = () => {
   // SAVE only appears once the job has been calculated
   const [calculated,      setCalculated]      = useState(false);
 
+  // ── Formula + material data for the right-hand panel ──
+  const [formulas,     setFormulas]     = useState<FormulaOption[]>([]);
+  const [materials,    setMaterials]    = useState<MaterialRow[]>([]);
+  const [items,        setItems]        = useState<FormulaItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError,   setItemsError]   = useState<string | null>(null);
+
   // ── Batch / SKU editing ───────────────────────────────────────────────────
-  // form.batchSku only ever holds a value the API has accepted.
-  // batchDraft is what the user is typing; it is discarded if the call fails.
   const [batchEditable,   setBatchEditable]   = useState(false);
   const [batchDraft,      setBatchDraft]      = useState('');
   const [batchSaving,     setBatchSaving]     = useState(false);
@@ -97,11 +173,12 @@ const ChemicalJobCardCreator: React.FC = () => {
     activeIngredientId: '',
     fragranceId:        '',
     bottleTypeId:       '',
-    weightPerUnit:      '',  // weight_per_unit_grams from product
-    totalWeight:        '',  // qty × weightPerUnit — shown col 4 for reference only
+    weightPerUnit:      '',  // kg per unit, from the product
+    totalWeight:        '',  // qty × weightPerUnit — the batch size in kg
     notes:              '',
     barcode:            '',
-    batchSku:           '',  // product.sku — changed only through the API
+    batchSku:           '',
+    formulaCode:        '',
   });
 
   // ── Init process lines ────────────────────────────────────────────────────
@@ -118,6 +195,43 @@ const ChemicalJobCardCreator: React.FC = () => {
     );
   }, []);
 
+  // ── Formula + raw material lookups ────────────────────────────────────────
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API_BASE}/formulas/list`),
+      axios.get(`${API_BASE}/formulas/materials`),
+    ])
+      .then(([f, m]) => {
+        setFormulas(Array.isArray(f.data) ? f.data : []);
+        setMaterials(Array.isArray(m.data) ? m.data : []);
+      })
+      .catch(() => { setFormulas([]); setMaterials([]); });
+  }, []);
+
+  const pickedFormula   = formulas.find(f => f.code === form.formulaCode);
+  const pickedFormulaId = pickedFormula?.id ?? null;
+
+  useEffect(() => {
+    if (!pickedFormulaId) { setItems([]); setItemsError(null); return; }
+
+    let cancelled = false;
+    setItemsLoading(true);
+    setItemsError(null);
+
+    const encodedData = encodeURIComponent(JSON.stringify({ id: pickedFormulaId }));
+    axios.get(`${API_BASE}/formulas/show?data=${encodedData}`)
+      .then(r => {
+        if (cancelled) return;
+        if (r.data?.status === 'error') throw new Error(r.data.message);
+        setItems(Array.isArray(r.data?.items) ? r.data.items : []);
+      })
+      .catch(() => { if (!cancelled) { setItems([]); setItemsError('Could not load the formula'); } })
+      .finally(() => { if (!cancelled) setItemsLoading(false); });
+
+    // a fast second pick must not have its response overwrite the newer one
+    return () => { cancelled = true; };
+  }, [pickedFormulaId]);
+
   // ── Pre-fill from URL params (clone) ──────────────────────────────────────
   useEffect(() => {
     const urlParams = (window as any).urlParamsData || {};
@@ -128,12 +242,12 @@ const ChemicalJobCardCreator: React.FC = () => {
     }
   }, [chemicalProducts]);
 
-  // ── Live total weight (for display only) ──────────────────────────────────
+  // ── Live batch weight ─────────────────────────────────────────────────────
   useEffect(() => {
     const qty    = parseFloat(form.quantity)      || 0;
     const weight = parseFloat(form.weightPerUnit) || 0;
     const total  = qty * weight;
-    setForm(f => ({ ...f, totalWeight: total > 0 ? total.toFixed(2) : '' }));
+    setForm(f => ({ ...f, totalWeight: total > 0 ? total.toFixed(3) : '' }));
   }, [form.quantity, form.weightPerUnit]);
 
   const generateBarcode = () => {
@@ -149,8 +263,8 @@ const ChemicalJobCardCreator: React.FC = () => {
     setSelectedProduct(product);
     setProductSearch(product.name);
     setShowSuggestions(false);
-    setCalculated(false);      // new product → must calculate again
-    setBatchEditable(false);   // lock the batch field again
+    setCalculated(false);
+    setBatchEditable(false);
     setBatchDraft('');
     setForm(f => ({
       ...f,
@@ -163,12 +277,13 @@ const ChemicalJobCardCreator: React.FC = () => {
       bottleTypeId:       String(product.bag_type_id           ?? ''),
       weightPerUnit:      String(product.weight_per_unit_grams ?? ''),
       batchSku:           String(product.sku                   ?? ''),
+      formulaCode:        String(product.formula_code          ?? ''),
     }));
   };
 
   // ── Batch code — open the field ───────────────────────────────────────────
   const openBatchEdit = () => {
-    if (!form.productId) { alert('Select a product first'); return; }
+    if (!form.productId) { alertWarn('Select a product first'); return; }
     setBatchDraft(form.batchSku);
     setBatchEditable(true);
     setTimeout(() => batchRef.current?.select(), 0);
@@ -179,15 +294,12 @@ const ChemicalJobCardCreator: React.FC = () => {
     setBatchEditable(false);
   };
 
-  // ── Batch code — write it to the product, then set it locally ─────────────
-  // GET /chemicalproducts/updatebatch?data={"id":..,"sku":".."}
-  // The field is only updated and re-locked if the API returns 200.
   const saveBatchCode = async () => {
     const next = batchDraft.trim();
 
-    if (!form.productId) { alert('Select a product first');      return; }
-    if (!next)           { alert('Batch code cannot be blank');  return; }
-    if (next === form.batchSku) { cancelBatchEdit(); return; }   // nothing changed
+    if (!form.productId) { alertWarn('Select a product first');                                  return; }
+    if (!next)           { alertWarn('Batch code cannot be blank', 'Enter a code or cancel.'); return; }
+    if (next === form.batchSku) { cancelBatchEdit(); return; }
 
     setBatchSaving(true);
     try {
@@ -197,11 +309,9 @@ const ChemicalJobCardCreator: React.FC = () => {
 
       const savedSku = response.data?.sku ?? next;
 
-      // API accepted it — now update the page
       setForm(f => ({ ...f, batchSku: savedSku }));
       setSelectedProduct(p => (p ? { ...p, sku: savedSku } : p));
 
-      // keep the in-memory product list in step so re-selecting shows the new code
       const local = chemicalProducts.find(p => String(p.id) === String(form.productId));
       if (local) local.sku = savedSku;
 
@@ -212,19 +322,40 @@ const ChemicalJobCardCreator: React.FC = () => {
       const errors = res?.data?.errors;
       const msg    = errors ? Object.values(errors).flat().join('\n')
                             : res?.data?.message || 'Could not reach the server — batch code not changed.';
-      alert(msg);
-      // field stays open and form.batchSku stays on the last saved value
+      alertError('Batch code not changed', msg);
     } finally {
       setBatchSaving(false);
     }
   };
 
+  /* ── Material requirement ──
+     Batch kg = units ordered × kg per unit. Each ingredient's issue quantity is
+     its share of that, so the figures move with the order rather than with the
+     formula's own 1000 kg reference batch. */
+  const batchKg = parseFloat(form.totalWeight) || 0;
+
+  const materialOf = (id: number) => materials.find(m => Number(m.id) === Number(id));
+
+  const requiredKg = (it: FormulaItem) => batchKg * (numOrNull(it.percentage) ?? 0) / 100;
+
+  const stockOf = (id: number) => numOrNull(materialOf(id)?.stock_on_hand) ?? 0;
+
+  const shortfall = (it: FormulaItem) => {
+    const need = requiredKg(it);
+    const have = stockOf(it.raw_material_id);
+    return need > have ? need - have : 0;
+  };
+
+  const shortLines = batchKg > 0 ? items.filter(it => shortfall(it) > 0) : [];
+
+  const totalRequired = items.reduce((s, it) => s + requiredKg(it), 0);
+
   // ── Calculate ─────────────────────────────────────────────────────────────
   const calculate = () => {
-    if (!form.productId)  { alert('Please select a product');  return; }
-    if (!form.customerId) { alert('Please select a customer'); return; }
-    if (!form.quantity)   { alert('Please enter quantity');     return; }
-    if (batchEditable)    { alert('Save or cancel the batch code first'); return; }
+    if (!form.productId)  { alertWarn('Select a product',  'Pick the product this job will make.'); return; }
+    if (!form.customerId) { alertWarn('Select a customer', 'A job card has to belong to a customer.'); return; }
+    if (!form.quantity)   { alertWarn('Enter a quantity',  'How many units is this job for?'); return; }
+    if (batchEditable)    { alertWarn('Finish the batch code', 'Save or cancel the batch code before calculating.'); return; }
 
     if (!form.barcode) generateBarcode();
 
@@ -232,22 +363,20 @@ const ChemicalJobCardCreator: React.FC = () => {
     const weight      = parseFloat(form.weightPerUnit) || 0;
     const totalWeight = qty * weight;
 
-    setForm(f => ({ ...f, totalWeight: totalWeight.toFixed(2) }));
+    setForm(f => ({ ...f, totalWeight: totalWeight.toFixed(3) }));
 
-    // Process line quantity = exactly what the user entered (no multiplication)
-    // Process line unit     = container size id
     setProcessLines(prev => prev.map(line => ({
       ...line,
       checked:   true,
       productId: form.productId,
-      quantity:  qty.toString(),       // ← just the user's number
-      unitId:    form.containerSizeId, // ← container size as unit
+      quantity:  qty.toString(),
+      unitId:    form.containerSizeId,
     })));
 
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      setCalculated(true);   // ← SAVE button appears from here
+      setCalculated(true);
     }, 800);
   };
 
@@ -257,32 +386,57 @@ const ChemicalJobCardCreator: React.FC = () => {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!form.customerId) { alert('Please select a customer'); return; }
-    if (!form.productId)  { alert('Please select a product');  return; }
-    if (!form.quantity)   { alert('Please enter quantity');     return; }
+    if (!form.customerId) { alertWarn('Select a customer', 'A job card has to belong to a customer.'); return; }
+    if (!form.productId)  { alertWarn('Select a product',  'Pick the product this job will make.');    return; }
+    if (!form.quantity)   { alertWarn('Enter a quantity',  'How many units is this job for?');         return; }
+
+    if (shortLines.length > 0) {
+      const rows = shortLines
+        .map(it => `<tr>
+            <td style="text-align:left;padding:2px 8px">${materialOf(it.raw_material_id)?.name ?? `#${it.raw_material_id}`}</td>
+            <td style="text-align:right;padding:2px 8px;font-weight:700">${shortfall(it).toFixed(3)} kg</td>
+          </tr>`)
+        .join('');
+
+      const ok = await confirmAction(
+        'Stock is short',
+        `<p style="margin-bottom:8px">These materials do not have enough on hand:</p>
+         <table style="margin:0 auto;font-size:14px">${rows}</table>`,
+        'Save anyway',
+      );
+      if (!ok) return;
+    }
 
     setSaving(true);
     try {
+      /* Material lines are resolved here and saved with the job, not left as a
+         pointer to the formula — editing the formula later must not rewrite
+         what this batch was issued. */
       const payload = {
-        jobCard: { ...form },   // batchSku travels with the job card
+        jobCard: { ...form, formulaId: pickedFormulaId, batchKg },
         items: processLines.filter(l => l.checked).map(l => ({
           processId:   l.processId,
           processName: l.processName,
           productId:   l.productId,
-          quantity:    l.quantity,  // user's number saved to jobcarditem.quantity
-          unitId:      l.unitId,    // containerSizeId saved to jobcarditem.unitId
+          quantity:    l.quantity,
+          unitId:      l.unitId,
+        })),
+        materials: items.map(it => ({
+          rawMaterialId: it.raw_material_id,
+          percentage:    numOrNull(it.percentage) ?? 0,
+          requiredKg:    Number(requiredKg(it).toFixed(4)),
+          uom:           it.uom ?? 'kg',
         })),
       };
       const encodedData = encodeURIComponent(JSON.stringify(payload));
       await axios.get(`${API_BASE}/chemicaljobcards/store?data=${encodedData}`);
-      alert('Job card saved successfully!');
+      await alertOk('Job card saved', `${form.quantity} units of ${selectedProduct?.name ?? 'product'}.`);
       window.location.href = LIST_URL;
     } catch (error: any) {
       if (!error.response) {
-
         window.location.href = LIST_URL;
       } else {
-        alert('Error saving job card. Please retry.');
+        alertError('Job card not saved', error.response?.data?.message || 'The server rejected the request. Check the details and try again.');
         console.error(error);
       }
     } finally {
@@ -290,382 +444,478 @@ const ChemicalJobCardCreator: React.FC = () => {
     }
   };
 
-  const sel = "appearance-none bg-white border-2 border-gray-300 rounded-lg px-4 py-2 pr-8 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200";
+  const sel = "appearance-none bg-white border-2 border-gray-300 rounded-lg px-3 py-2 pr-8 w-full shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200";
   const inp = "bg-white border-2 border-gray-300 rounded px-3 py-2 w-full shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200";
   const ro  = "bg-gray-100 text-gray-900 border-2 border-gray-300 rounded px-3 py-2 w-full shadow-sm cursor-not-allowed";
+  const lbl = "block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1";
+
+  const density = numOrNull(pickedFormula?.density_kg_per_l);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="w-full p-6 bg-white rounded-lg shadow-lg">
+    <div className="h-screen overflow-hidden flex flex-col bg-slate-200">
 
-          {/* ── Page header ── */}
-          <div className="border-b border-gray-200 pb-4 mb-6">
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <FlaskConical className="text-blue-600" />
-              Create Chemical Job Card
-            </h1>
+      {/* ── Top bar ── */}
+      <div className="h-12 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 flex items-center px-5 gap-3 shrink-0 shadow-lg">
+        <FlaskConical className="text-cyan-400 w-4 h-4" />
+        <span className="text-white font-bold text-sm tracking-tight">Create Chemical Job Card</span>
+        {selectedProduct && (
+          <span className="bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+            {selectedProduct.name}
+          </span>
+        )}
+        {batchKg > 0 && (
+          <span className="hidden lg:inline-flex items-center gap-1.5 text-xs text-slate-400 border-l border-slate-700 pl-3 ml-1">
+            Batch
+            <strong className="text-white font-mono text-sm">{batchKg.toFixed(2)} kg</strong>
+          </span>
+        )}
+        {shortLines.length > 0 && (
+          <span className="ml-auto flex items-center gap-1.5 bg-red-500/20 text-red-200 border border-red-500/40 text-xs font-bold px-3 py-1 rounded-full">
+            <AlertTriangle className="w-3 h-3" />
+            {shortLines.length} short
+          </span>
+        )}
+      </div>
+
+      {/* ── Two panels ── */}
+      <div className="flex-1 overflow-hidden flex gap-3 p-3">
+
+        {/* ═══════════════════════════
+            PANEL 1 — THE JOB
+        ═══════════════════════════ */}
+        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="bg-indigo-50 border-b-2 border-indigo-500 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <Package className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs font-black text-indigo-900 uppercase tracking-widest">The job</span>
           </div>
 
-          <div className="space-y-6">
+          <div className="p-4 overflow-y-auto flex flex-col gap-4 flex-1">
 
-            {/* ── Customer + Calculate ── */}
-            <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-center gap-4">
-                <label className="text-lg font-semibold text-gray-700">Customer:</label>
-                <div className="relative">
-                  <select
-                    value={form.customerId}
-                    onChange={e => { setForm(f => ({ ...f, customerId: e.target.value })); setCalculated(false); }}
-                    className={`${sel} min-w-64`}
-                  >
-                    <option value="">---- Select Customer ----</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                </div>
-              </div>
-              <button
-                onClick={calculate}
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
+          {/* Customer sits alone — every job belongs to one, and it is the
+              first decision made */}
+          <div>
+            <label className={lbl}>Customer</label>
+            <div className="relative">
+              <select
+                value={form.customerId}
+                onChange={e => { setForm(f => ({ ...f, customerId: e.target.value })); setCalculated(false); }}
+                className={`${sel} text-base py-2.5`}
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-                Calculate
-              </button>
+                <option value="">---- Select Customer ----</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Product</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={e => { setProductSearch(e.target.value); setShowSuggestions(true); }}
+                  onClick={() => {
+                    setProductSearch('');
+                    setForm(f => ({ ...f, productId: '', formulaCode: '' }));
+                    setSelectedProduct(null);
+                    setCalculated(false);
+                    cancelBatchEdit();
+                  }}
+                  placeholder="---- Search Product ----"
+                  className={inp}
+                />
+                {showSuggestions && filteredProducts.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredProducts.map(p => (
+                      <div
+                        key={p.id}
+                        onMouseDown={() => handleProductSelect(p)}
+                        className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm"
+                      >
+                        {p.name}
+                        {p.sku && <span className="text-gray-400 text-xs ml-2">#{p.sku}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* ── Product search ── */}
-            <div className="flex items-center justify-between bg-blue-50 p-4 rounded-lg">
-              <div className="flex items-center gap-4">
-                <label className="text-lg font-semibold text-gray-700">Product:</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={productSearch}
-                    onChange={e => { setProductSearch(e.target.value); setShowSuggestions(true); }}
-                    onClick={() => {
-                      setProductSearch('');
-                      setForm(f => ({ ...f, productId: '' }));
-                      setSelectedProduct(null);
-                      setCalculated(false);
-                      cancelBatchEdit();
-                    }}
-                    placeholder="---- Search Chemical Product ----"
-                    className={`${sel} min-w-96`}
-                  />
-                  {showSuggestions && filteredProducts.length > 0 && (
-                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {filteredProducts.map(p => (
-                        <div
-                          key={p.id}
-                          onMouseDown={() => handleProductSelect(p)}
-                          className="px-4 py-2 hover:bg-blue-50 cursor-pointer"
-                        >
-                          {p.name}
-                          {p.sku && <span className="text-gray-400 text-sm ml-2">#{p.sku}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                </div>
+            <div>
+              <label className={lbl}>Package</label>
+              <div className="relative">
+                <select value={form.containerSizeId} disabled className={`${sel} bg-gray-100`}>
+                  <option value="">-- package --</option>
+                  {containerSizes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               </div>
-              {form.productId && (
-                <div className="text-sm text-green-600 font-medium">
-                  ✓ Product Selected (ID: {form.productId})
-                </div>
+            </div>
+
+            <div>
+              <label className={lbl}>Qnt (no of units)</label>
+              <input
+                type="number"
+                value={form.quantity}
+                onChange={e => { setForm(f => ({ ...f, quantity: e.target.value })); setCalculated(false); }}
+                className={`${inp} focus:bg-yellow-50`}
+                placeholder="e.g. 500"
+              />
+            </div>
+            <div>
+              <label className={lbl}>Weight per unit (kg)</label>
+              <input readOnly value={form.weightPerUnit} className={ro} />
+            </div>
+            <div>
+              <label className={lbl}>Batch weight (kg)</label>
+              <input
+                readOnly
+                value={form.totalWeight}
+                className="bg-indigo-50 text-indigo-900 border-2 border-indigo-300 rounded px-3 py-2 w-full shadow-sm cursor-not-allowed font-bold font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Specification</span>
+            <div className="flex-1 h-px bg-indigo-100" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Colour</label>
+              <input readOnly value={byId(colourTypes, form.colourId)} className={ro} />
+            </div>
+            <div>
+              <label className={lbl}>Viscosity</label>
+              <input readOnly value={byId(viscosities, form.viscosityId)} className={ro} />
+            </div>
+            <div>
+              <label className={lbl}>Active ingredient</label>
+              <input readOnly value={byId(activeIngredients, form.activeIngredientId)} className={ro} />
+            </div>
+            <div>
+              <label className={lbl}>Fragrance</label>
+              <input readOnly value={byId(fragrances, form.fragranceId)} className={ro} />
+            </div>
+            <div>
+              <label className={lbl}>Container / bottle</label>
+              <input readOnly value={byId(bottleTypes, form.bottleTypeId)} className={ro} />
+            </div>
+
+            {/* Formula code — filled from the product, editable so a job can
+                still be raised when the product's code is stale or missing */}
+            <div>
+              <label className={lbl}>Formula code</label>
+              <input
+                type="text"
+                value={form.formulaCode}
+                onChange={e => {
+                  setForm(f => ({ ...f, formulaCode: e.target.value.toUpperCase() }));
+                  setCalculated(false);
+                }}
+                placeholder="LIQSOAP-01"
+                className={`${inp} font-mono ${
+                  form.formulaCode && !pickedFormula ? '!border-red-400 !bg-red-50' : ''
+                }`}
+              />
+              {form.formulaCode && !pickedFormula && !itemsLoading && (
+                <p className="text-[10px] text-red-600 font-semibold mt-0.5">No formula with this code</p>
+              )}
+              {pickedFormula && (
+                <p className="text-[10px] text-teal-600 font-semibold mt-0.5">{pickedFormula.name}</p>
               )}
             </div>
 
-            {/* ── Product details block ── */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {/* Batch / SKU — writes to the product before it changes here */}
+            <div>
+              <label className={lbl}>Batch / SKU</label>
+              <div className="relative">
+                <input
+                  ref={batchRef}
+                  type="text"
+                  value={batchEditable ? batchDraft : form.batchSku}
+                  readOnly={!batchEditable}
+                  disabled={batchSaving}
+                  onChange={e => setBatchDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter')  saveBatchCode();
+                    if (e.key === 'Escape') cancelBatchEdit();
+                  }}
+                  placeholder="Batch code"
+                  className={`${batchEditable ? inp : ro} ${batchEditable ? 'pr-16' : 'pr-11'} font-mono`}
+                />
 
-              {/* Dark header
-                  Col 1 — Product name (disabled)
-                  Col 2 — Package / container size (disabled)
-                  Col 3 — Qty: no of units the user enters → also saved on process lines
-                  Col 4 — Qnt per Unit: qty × weight (display only)
-              */}
-              <div className="bg-gray-800 text-white p-3">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Product Name</label>
-                    <div className="relative">
-                      <select
-                        value={form.productId}
-                        disabled
-                        className="appearance-none bg-white text-gray-900 border-2 border-gray-300 rounded px-3 py-2 pr-8 w-full shadow-sm"
-                      >
-                        <option value="">---- Select Product ----</option>
-                        {chemicalProducts.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    </div>
+                {batchEditable ? (
+                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={saveBatchCode}
+                      disabled={batchSaving}
+                      title="Update batch code on the product"
+                      className="p-1.5 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
+                    >
+                      {batchSaving
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Check className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelBatchEdit}
+                      disabled={batchSaving}
+                      title="Cancel"
+                      className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Package</label>
-                    <div className="relative">
-                      <select
-                        value={form.containerSizeId}
-                        disabled
-                        className="appearance-none bg-white text-gray-900 border-2 border-gray-300 rounded px-3 py-2 pr-8 w-full shadow-sm"
-                      >
-                        <option value="">-- package --</option>
-                        {containerSizes.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    </div>
-                  </div>
-
-                  {/* Col 3 — user enters number of units, this goes on process lines */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Qnt (no of units)</label>
-                    <input
-                      type="number"
-                      value={form.quantity}
-                      onChange={e => { setForm(f => ({ ...f, quantity: e.target.value })); setCalculated(false); }}
-                      className="bg-white text-gray-900 border-2 border-gray-300 rounded px-3 py-2 w-full shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:bg-yellow-50"
-                      placeholder="e.g. 500"
-                    />
-                  </div>
-
-                  {/* Col 4 — qty × weight per unit, display only */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Total Qnt per Job (g)</label>
-                    <input
-                      type="text"
-                      value={form.totalWeight}
-                      readOnly
-                      className="bg-gray-100 text-gray-900 border-2 border-gray-300 rounded px-3 py-2 w-full shadow-sm cursor-not-allowed"
-                    />
-                  </div>
-
-                </div>
-              </div>
-
-              {/* White body — formulation readonly fields */}
-              <div className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Colour</label>
-                    <input readOnly value={byId(colourTypes, form.colourId)} className={ro} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Viscosity</label>
-                    <input readOnly value={byId(viscosities, form.viscosityId)} className={ro} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Active Ingredient</label>
-                    <input readOnly value={byId(activeIngredients, form.activeIngredientId)} className={ro} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Fragrance</label>
-                    <input readOnly value={byId(fragrances, form.fragranceId)} className={ro} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Container / Bottle Type</label>
-                    <div className="relative">
-                      <select
-                        value={form.bottleTypeId}
-                        disabled
-                        className="appearance-none border-2 border-gray-300 rounded px-3 py-2 pr-8 w-full shadow-sm bg-gray-100"
-                      >
-                        <option value="">--</option>
-                        {bottleTypes.map(b => (
-                          <option key={b.id} value={b.id}>{b.name}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Weight per Unit (g)</label>
-                    <input readOnly value={form.weightPerUnit} className={ro} />
-                  </div>
-
-                  {/* ── Batch / SKU — writes to the product before it changes here ── */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Batch / SKU</label>
-                    <div className="relative">
-                      <input
-                        ref={batchRef}
-                        type="text"
-                        value={batchEditable ? batchDraft : form.batchSku}
-                        readOnly={!batchEditable}
-                        disabled={batchSaving}
-                        onChange={e => setBatchDraft(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter')  saveBatchCode();
-                          if (e.key === 'Escape') cancelBatchEdit();
-                        }}
-                        placeholder="Batch code"
-                        className={`${batchEditable ? inp : ro} ${batchEditable ? 'pr-16' : 'pr-11'} font-mono`}
-                      />
-
-                      {batchEditable ? (
-                        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={saveBatchCode}
-                            disabled={batchSaving}
-                            title="Update batch code on the product"
-                            className="p-1.5 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
-                          >
-                            {batchSaving
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <Check className="w-4 h-4" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelBatchEdit}
-                            disabled={batchSaving}
-                            title="Cancel"
-                            className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={openBatchEdit}
-                          title="Change batch code"
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded text-gray-500 hover:text-blue-600 hover:bg-blue-50"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    {batchEditable && (
-                      <p className="text-xs text-gray-500 mt-1">Saves to the product record</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Notes / Instructions</label>
-                    <input
-                      type="text"
-                      value={form.notes}
-                      onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                      className={inp}
-                      placeholder="Safety notes, instructions…"
-                    />
-                  </div>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openBatchEdit}
+                    title="Change batch code"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* ── Barcode ── */}
-            {form.barcode && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-3">
-                  <Package className="text-blue-600" />
-                  <span className="font-medium text-blue-900">Barcode:</span>
-                  <span className="font-mono text-lg text-blue-800">{form.barcode}</span>
-                </div>
-              </div>
-            )}
+          <div>
+            <label className={lbl}>Notes / instructions</label>
+            <input
+              type="text"
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              className={inp}
+              placeholder="Safety notes, instructions…"
+            />
+          </div>
 
-            {/* ── Process lines ──
-                quantity = exactly what the user typed (form.quantity)
-                unit     = container size id
-            */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900">Process Types</h3>
-              {processLines.map((line, idx) => (
-                <div key={line.processId} className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="bg-gray-800 text-white p-3">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={line.checked}
-                          onChange={e => handleProcessChange(idx, 'checked', e.target.checked)}
-                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="font-medium">{line.processName}</span>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Product</label>
-                        <div className="relative">
-                          <select
-                            value={line.productId}
-                            onChange={e => handleProcessChange(idx, 'productId', e.target.value)}
-                            disabled={!line.checked}
-                            className="appearance-none bg-white text-gray-900 border border-gray-300 rounded px-3 py-2 pr-8 w-full text-sm disabled:bg-gray-100"
-                          >
-                            <option value="">-- select Product --</option>
-                            {chemicalProducts.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        </div>
-                      </div>
-
-                      {/* exactly what the user typed */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Quantity</label>
-                        <input
-                          type="text"
-                          readOnly
-                          value={line.quantity}
-                          className="bg-white text-gray-900 border border-gray-300 rounded px-3 py-2 w-full text-sm cursor-not-allowed"
-                        />
-                      </div>
-
-                      {/* container size */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Unit</label>
-                        <div className="relative">
-                          <select
-                            value={line.unitId}
-                            disabled
-                            className="appearance-none bg-white text-gray-900 border border-gray-300 rounded px-3 py-2 pr-8 w-full text-sm disabled:bg-gray-100"
-                          >
-                            <option value="">-- select unit --</option>
-                            {containerSizes.map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
-                </div>
-              ))}
+          {form.barcode && (
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 flex items-center gap-3">
+              <Package className="text-blue-600 w-4 h-4" />
+              <span className="text-xs font-medium text-blue-900">Barcode</span>
+              <span className="font-mono text-sm text-blue-800">{form.barcode}</span>
             </div>
+          )}
 
-            {/* ── Submit — only after Calculate ── */}
-            {calculated && (
-              <div className="flex justify-center pt-6">
-                <button
-                  onClick={handleSubmit}
-                  disabled={saving}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all"
-                >
-                  {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                  SAVE
-                </button>
+          {/* ── Process lines ── */}
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Process types</span>
+            <div className="flex-1 h-px bg-indigo-100" />
+            <button
+              onClick={calculate}
+              disabled={loading}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50 shrink-0 shadow-sm"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calculator className="w-3.5 h-3.5" />}
+              Calculate
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {processLines.map((line, idx) => (
+              <div
+                key={line.processId}
+                className={`flex items-center gap-3 border rounded-lg px-3 py-2 transition-colors ${
+                  line.checked
+                    ? 'bg-indigo-50 border-indigo-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={line.checked}
+                  onChange={e => handleProcessChange(idx, 'checked', e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <span className={`text-sm font-medium flex-1 ${line.checked ? 'text-indigo-900' : 'text-slate-500'}`}>
+                  {line.processName}
+                </span>
+                <span className="text-xs font-mono text-slate-500">
+                  {line.quantity || '—'} {byId(containerSizes, line.unitId)}
+                </span>
               </div>
-            )}
+            ))}
+          </div>
 
+          {/* SAVE only appears once the job has been calculated */}
+          {calculated && (
+            <button
+              onClick={handleSubmit}
+              disabled={saving}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors mt-1 shadow-md"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              SAVE JOB CARD
+            </button>
+          )}
           </div>
         </div>
+
+        {/* ═══════════════════════════
+            PANEL 2 — THE MATERIALS
+        ═══════════════════════════ */}
+        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="bg-teal-50 border-b-2 border-teal-500 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <FlaskConical className="w-4 h-4 text-teal-600" />
+            <span className="text-xs font-black text-teal-900 uppercase tracking-widest">Materials required</span>
+            {items.length > 0 && (
+              <span className="ml-auto bg-teal-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {items.length}
+              </span>
+            )}
+          </div>
+
+          <div className="p-4 overflow-y-auto flex flex-col gap-4 flex-1">
+
+          {!form.productId ? (
+            <p className="text-xs text-gray-400">Select a product to see what it needs.</p>
+          ) : !form.formulaCode ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-amber-800 font-semibold">
+                This product has no formula linked — no materials can be worked out.
+              </p>
+            </div>
+          ) : !pickedFormula && !itemsLoading ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-amber-800 font-semibold">
+                Formula {form.formulaCode} was not found in the formula list.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Formula header */}
+              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-lg border border-teal-200 px-3 py-2.5 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Formula</p>
+                  <p className="text-sm font-semibold text-slate-800">{pickedFormula?.name}</p>
+                  <p className="text-[10px] font-mono text-teal-500">{form.formulaCode}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Batch</p>
+                  <p className="text-xl font-bold font-mono text-teal-900 leading-none mt-0.5">
+                    {batchKg > 0 ? batchKg.toFixed(2) : '—'}
+                    <span className="text-xs font-sans font-normal text-gray-400 ml-1">kg</span>
+                  </p>
+                  {density !== null && density > 0 && batchKg > 0 && (
+                    <p className="text-[10px] text-teal-600 mt-0.5">
+                      ≈ {(batchKg / density).toFixed(1)} L at {density.toFixed(4)} kg/L
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {batchKg <= 0 && (
+                <p className="text-xs text-gray-400">
+                  Enter a quantity to see how much of each material to issue.
+                </p>
+              )}
+
+              {itemsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400 py-4">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading the formula…
+                </div>
+              ) : itemsError ? (
+                <p className="text-xs text-red-600 font-semibold py-4">{itemsError}</p>
+              ) : items.length === 0 ? null : (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-teal-50 text-teal-700 uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="text-left px-3 py-2.5 font-bold">Material</th>
+                        <th className="text-right px-2 py-2.5 font-bold w-16">%</th>
+                        <th className="text-right px-2 py-2.5 font-bold w-24">Issue kg</th>
+                        <th className="text-right px-3 py-2.5 font-bold w-24">On hand</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {items.map(it => {
+                        const m     = materialOf(it.raw_material_id);
+                        const pct   = numOrNull(it.percentage) ?? 0;
+                        const need  = requiredKg(it);
+                        const have  = stockOf(it.raw_material_id);
+                        const short = batchKg > 0 && need > have;
+
+                        return (
+                          <tr key={it.id} className={short ? 'bg-red-50' : 'bg-white'}>
+                            <td className="px-3 py-2.5 text-slate-800 font-medium">
+                              {m?.name ?? `#${it.raw_material_id}`}
+                              {Number(it.is_balance) === 1 && (
+                                <span className="ml-1.5 text-[10px] font-bold text-blue-600 align-middle">BAL</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-mono text-slate-500">
+                              {pct.toFixed(2)}
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-mono font-bold text-base text-teal-800">
+                              {batchKg > 0 ? need.toFixed(3) : '—'}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right font-mono ${short ? 'text-red-700 font-bold' : 'text-slate-500'}`}>
+                              <span className="inline-flex items-center gap-1 justify-end">
+                                {short && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                                {have.toFixed(2)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {batchKg > 0 && (
+                      <tfoot>
+                        <tr className="bg-teal-50 border-t-2 border-teal-200">
+                          <td className="px-3 py-2.5 text-[10px] font-bold text-teal-700 uppercase" colSpan={2}>
+                            Total to issue
+                          </td>
+                          <td className="px-2 py-2.5 text-right font-mono font-bold text-base text-teal-900">
+                            {totalRequired.toFixed(3)}
+                          </td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              )}
+
+              {/* Shortfall warning — the thing worth catching before the mixer runs */}
+              {shortLines.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  <p className="text-xs font-bold text-red-800 flex items-center gap-1.5 mb-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Not enough stock for {shortLines.length} material{shortLines.length > 1 ? 's' : ''}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {shortLines.map(it => (
+                      <li key={it.id} className="text-xs text-red-700 flex justify-between">
+                        <span>{materialOf(it.raw_material_id)?.name ?? `#${it.raw_material_id}`}</span>
+                        <span className="font-mono font-semibold">
+                          short {shortfall(it).toFixed(3)} kg
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {batchKg > 0 && shortLines.length === 0 && items.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-xs font-semibold text-green-800">
+                    Enough stock on hand for this batch
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+          </div>
+        </div>
+
       </div>
 
       {loading && (

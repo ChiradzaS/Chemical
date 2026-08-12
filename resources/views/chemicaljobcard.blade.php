@@ -4,11 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <title>Create Chemical Job Card</title>
 
 
-<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicaljobcard.js') }}" type="module" ></script> 
+       @viteReactRefresh
+        @vite(['resources/css/app.css', 'resources/js/chemicaljobcard.tsx']) 
+        
+
 
 
 </head>
@@ -35,6 +38,7 @@
                 category:              "{{ $product->category ?? '' }}",
                 brand:                 "{{ $product->brand ?? '' }}",
                 stock_unit_id:         {{ $product->stock_unit_id ?? 'null' }},
+                formula_code:          "{{ $product->formula_code ?? '' }}",
                 colour_id:             {{ $product->colour_id ?? 'null' }},
                 viscosity_id:          {{ $product->viscosity_id ?? 'null' }},
                 active_ingredient_id:  {{ $product->active_ingredient_id ?? 'null' }},
