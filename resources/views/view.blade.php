@@ -359,6 +359,7 @@ footer {
     <ul>
       <li><a href="#" onclick="myFunc1('stocks')"><span>Stock</span></a></li>
       <li><a href="#" onclick="myFunc1('reactstockadjustment')"><span>Stock Adjustment</span></a></li>
+              <li><a href="#" onclick="myFunc1('materialadjustment')"><span>Material Adjustment</span></a></li>
       <!-- <li><a href="#" onclick="myFunc1('pricings')"><span>Pricing</span></a></li> -->
     </ul>
   </li>
@@ -396,9 +397,10 @@ footer {
   {{-- Reporting --}}
   <li class='active has-sub'><a href='#'><span>Supply</span></a>
     <ul>
-      <li><a href="#" onclick="myFunc1('formulas')"><span>Chemical Formulas</span></a></li>
-      <li><a href="#" onclick="myFunc1('jobcardReport')"><span>Supply Stock</span></a></li>
-      <li><a href="#" onclick="myFunc1('chemicalmaterial')"><span>Raw Material</span></a></li>
+      <li><a href="#" onclick="myFunc1('formulas')"><span>Create Chemical Formulas</span></a></li>
+      <li><a href="#" onclick="myFunc1('reactrawmaterial')"><span>Receive Material</span></a></li>
+
+      <li><a href="#" onclick="myFunc1('chemicalmaterial')"><span>List/Add Material</span></a></li>
     </ul>
   </li>
 

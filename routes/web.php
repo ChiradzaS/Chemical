@@ -179,6 +179,15 @@ Route::get('/chemicalproductlist', function () {
 
 
 
+Route::get('/reactrawmaterial', function () {
+
+    return view('reactrawmaterial'); 
+
+})->name('reactrawmaterial');
+
+
+
+
 
 Route::get('/productchemicals', function () {
     return view('productchemicals');
@@ -252,6 +261,15 @@ Route::get('/chemicalmaterial', function () {
     return view('chemicalmaterial'); 
 
 })->name('chemicalmaterial');
+
+
+Route::get('/materialadjustment', function () {
+
+    return view('materialadjustment'); 
+
+})->name('materialadjustment');
+
+
 
 
 
@@ -991,6 +1009,7 @@ Route::get('/raw-materials/list',   [RawMaterialController::class, 'list']);
 Route::get('/raw-materials/save',   [RawMaterialController::class, 'save']);
 Route::get('/raw-materials/toggle', [RawMaterialController::class, 'toggle']);
 Route::get('/raw-materials/lookup', [RawMaterialController::class, 'lookup']);
+Route::get('/raw-materials/history',[RawMaterialController::class, 'history']);
 
 
 
@@ -1001,3 +1020,27 @@ Route::get('/formulas/show',      [FormulaController::class, 'show']);
 Route::get('/formulas/save',      [FormulaController::class, 'save']);
 Route::get('/formulas/products',  [FormulaController::class, 'products']);
 Route::get('/formulas/materials', [FormulaController::class, 'materials']);
+
+
+
+use App\Http\Controllers\StockReceiptController;
+use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\RawMaterialAdjustmentController;
+
+// Suppliers
+Route::get('/suppliers/list',   [SupplierController::class, 'list']);
+Route::get('/suppliers/save',   [SupplierController::class, 'save']);
+Route::get('/suppliers/toggle', [SupplierController::class, 'toggle']);
+Route::get('/suppliers',        fn () => view('suppliers.index'));
+
+// Receiving
+Route::get('/stock-receipts/list',    [StockReceiptController::class, 'list']);
+Route::get('/stock-receipts/history', [StockReceiptController::class, 'history']);
+Route::get('/stock-receipts/save',    [StockReceiptController::class, 'save']);
+Route::get('/stock-receipts/show',    [StockReceiptController::class, 'show']);
+Route::get('/receive-stock',          fn () => view('stock.receive'));
+
+
+Route::get('/raw-material-adjustments/list',    [RawMaterialAdjustmentController::class, 'list']);
+Route::get('/raw-material-adjustments/save',    [RawMaterialAdjustmentController::class, 'save']);
+Route::get('/raw-material-adjustments/reverse', [RawMaterialAdjustmentController::class, 'reverse']);

@@ -7,12 +7,12 @@
     <title>Add Chemical Raw Materials</title>
 
 
-      @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicalmaterial.tsx']) 
-        
 
-<!-- <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicalmaterial.js') }}" type="module"></script> -->
+                <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script type="module"
+        src="{{ asset('public/build/assets/chemicalmaterial.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
+
+        
 
 
 </head>

@@ -689,7 +689,14 @@ class AppServiceProvider extends ServiceProvider
                 $ChemicalUnitTypes = DB::table('types')
                         ->where('groupType', 'ChemicalUnitType')
                         ->get();
-                    
+
+
+
+                $suppliers = DB::table('suppliers')
+                            ->where('is_active', 1)
+                            ->orderBy('name')
+                            ->get();
+                                
 
 
 
@@ -710,6 +717,7 @@ class AppServiceProvider extends ServiceProvider
                     'chemicalColours',
                     'bottleTypes',
                     'containerSizes',
+                    'suppliers',
                     'capTypes',
                     'lableTypes',
                     'ChemicalMaterialTypes',

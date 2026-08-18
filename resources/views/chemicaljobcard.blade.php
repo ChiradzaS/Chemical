@@ -8,8 +8,12 @@
     <title>Create Chemical Job Card</title>
 
 
-       @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicaljobcard.tsx']) 
+    
+                   <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script type="module"
+        src="{{ asset('public/build/assets/chemicaljobcard.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
+
+
         
 
 

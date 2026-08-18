@@ -201,4 +201,35 @@ class RawMaterialController extends Controller
 
         return response()->json($rows);
     }
+
+
+    public function history(Request $request)
+{
+    $data       = json_decode($request->query('data', '{}'), true) ?: [];
+    $materialId = (int) ($data['raw_material_id'] ?? 0);
+
+    if ($materialId <= 0) {
+        return response()->json(['status' => 'error', 'message' => 'No material was given.']);
+    }
+
+    $limit = (int) ($data['limit'] ?? 200);
+    $limit = $limit > 0 && $limit <= 1000 ? $limit : 200;
+
+    return response()->json(
+        DB::table('raw_material_trans as t')
+            ->leftJoin('suppliers as s', 's.id', '=', 't.supplier_id')
+            ->leftJoin('users as u', 'u.id', '=', 't.created_by')
+            ->where('t.raw_material_id', $materialId)
+            ->orderByDesc('t.id')
+            ->limit($limit)
+            ->get([
+                't.id', 't.trans_date', 't.created_at', 't.doc_type', 't.doc_no',
+                't.qty_in', 't.qty_out', 't.balance_after', 't.unit_cost', 't.notes',
+                's.name as supplier_name',
+                'u.name as user_name',
+            ])
+    );
+}
+
+
 }

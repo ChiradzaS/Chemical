@@ -13,7 +13,7 @@ class ChemicalProductController extends Controller
 
 public function index(Request $request): JsonResponse
 {
-    $products = ChemicalProduct::orderBy('created_at', 'desc')->get();
+    $products = ChemicalProduct::orderBy('updated_at', 'desc')->get();
     return response()->json($products);
 }
 
@@ -71,7 +71,7 @@ public function update(Request $request): JsonResponse
 
     $validated = validator($data, [
         'name'                   => 'required|string|max:255',
-        'sku'                    => ['nullable', 'string', 'max:100', Rule::unique('chemical_products', 'sku')->ignore($id)],
+        'sku'                    => 'nullable|string|max:100',
         'category'               => 'nullable|string|max:100',
         'brand'                  => 'nullable|string|max:100',
         'barcode'                => 'nullable|string|max:100',

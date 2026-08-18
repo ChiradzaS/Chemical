@@ -159,6 +159,19 @@ class ChemicalJobCardItemRpt extends Fpdf
         $pdf->AddPage('L'); // 297mm wide, 10mm margins = 277mm usable
         $pdf->SetAutoPageBreak(true, 10); // materials can push past one page
 
+        // ── Numbers — top left, no box ────────────────────────────────────────
+        // the item id is what the floor calls the job card number; fall back to
+        // the job card's own id when the whole card is printed
+        $jcText = 'JC ' . ($jobcarditemId ?: $jobCardId);
+        $pdf->SetFont('Arial', 'B', 18);
+        $pdf->Text(10, 13, $jcText);
+        $jcWidth = $pdf->GetStringWidth($jcText);   // measured at 18pt bold
+
+        if ($jobcarditemId) {
+            $pdf->SetFont('Arial', '', 11);
+            $pdf->Text(10 + $jcWidth + 4, 13, 'Job ' . $jobCardId);
+        }
+
         // ── Barcode ───────────────────────────────────────────────────────────
         $barcode = $jobCard->barcode ?? '0000000000';
         $pdf->digit_to_fpdf_renderer($pdf, '000000', 118, 5, 0, 'code128', ['code' => $barcode], 0.5, 10);
@@ -173,9 +186,8 @@ class ChemicalJobCardItemRpt extends Fpdf
         $pdf->sectionTitle('CHEMICAL JOB CARD');
         $pdf->Ln(1);
 
-        // Row 1
-        $pdf->lv('JC ID',        $jobCardId,                    15, 30);
-        $pdf->lv('Customer',     $customerName,                 25, 55);
+        // Row 1  25+100+22+38+18+22+22+30 = 277
+        $pdf->lv('Customer',     $customerName,                 25, 100);
         $pdf->lv('Start Date',   $jobCard->startDate   ?? '—',  22, 38);
         $pdf->lv('Quantity',     $jobCard->quantity    ?? '—',  18, 22);
         $pdf->lv('Batch Wt(kg)', number_format($batchKg, 3),    22, 30, 5, true);
@@ -210,7 +222,7 @@ class ChemicalJobCardItemRpt extends Fpdf
 
         // ══════════════════════════════════════════════════════════════════════
         // SECTION 3 — Materials to issue
-        // 8+70+24+16+26+26+107 = 277
+        // 8+66+22+15+26+30+26+84 = 277
         // ══════════════════════════════════════════════════════════════════════
         $pdf->sectionTitle('MATERIALS TO ISSUE');
         $pdf->Ln(1);
@@ -234,8 +246,9 @@ class ChemicalJobCardItemRpt extends Fpdf
             $pdf->SetFont('Arial', 'I', 7);
             $pdf->Cell(277, 6, 'No formula linked to this product - materials must be issued manually.', 1, 1, 'C');
         } else {
-            // 8+66+22+15+26+26+26+88 = 277
-            $mw = [8, 66, 22, 15, 26, 26, 26, 88];
+            // 8+66+22+15+26+30+26+84 = 277
+            // the issue column is wider now that it carries the unit alongside the figure
+            $mw = [8, 66, 22, 15, 26, 30, 26, 84];
 
             $pdf->SetFont('Arial', 'B', 7);
             $pdf->SetFillColor(220, 220, 220);
@@ -246,7 +259,7 @@ class ChemicalJobCardItemRpt extends Fpdf
             // per-tonne is the figure operators know by heart, so it doubles as
             // a sanity check against the scaled batch column beside it
             $pdf->Cell($mw[4], 5, 'Per 1000kg', 1, 0, 'C', true);
-            $pdf->Cell($mw[5], 5, 'Issue kg',   1, 0, 'C', true);
+            $pdf->Cell($mw[5], 5, 'Issue Qty',  1, 0, 'C', true);
             $pdf->Cell($mw[6], 5, 'Actual kg',  1, 0, 'C', true);
             $pdf->Cell($mw[7], 5, 'Weighed by / Time', 1, 0, 'C', true);
             $pdf->Ln();
@@ -254,6 +267,7 @@ class ChemicalJobCardItemRpt extends Fpdf
             $n = 1; $fill = false; $totalKg = 0; $totalPct = 0;
             foreach ($materials as $m) {
                 $req       = (float) ($m->required_kg ?? 0);
+                $uom       = trim((string) ($m->uom ?? '')) !== '' ? $m->uom : 'kg';
                 $totalKg  += $req;
                 $totalPct += (float) $m->percentage;
 
@@ -265,11 +279,14 @@ class ChemicalJobCardItemRpt extends Fpdf
                 $pdf->Cell($mw[3], 5, number_format((float) $m->percentage, 2),   1, 0, 'R', $fill);
                 // 1% of a tonne is 10 kg, so this is just the percentage x 10
                 $pdf->Cell($mw[4], 5, number_format((float) $m->percentage * 10, 2), 1, 0, 'R', $fill);
-                // the figure the operator weighs to — set bold so it reads at arm's length
+                // the figure the operator weighs to — bold so it reads at arm's
+                // length, with the material's own unit so litres are not weighed
                 $pdf->SetFont('Arial', 'B', 8);
-                $pdf->Cell($mw[5], 5, number_format($req, 3),                     1, 0, 'R', $fill);
+                $pdf->Cell($mw[5], 5, number_format($req, 3) . ' ' . $uom,        1, 0, 'R', $fill);
                 $pdf->SetFont('Arial', '', 7);
-                $pdf->Cell($mw[6], 5, '',                                         1, 0, 'R', $fill); // filled in on the floor
+                // the same quantity expressed in kg — matters when the material
+                // is issued in litres but weighed on a scale
+                $pdf->Cell($mw[6], 5, number_format($req, 3),                     1, 0, 'R', $fill);
                 $pdf->Cell($mw[7], 5, '',                                         1, 0, 'L', $fill);
                 $pdf->Ln();
 
@@ -289,10 +306,10 @@ class ChemicalJobCardItemRpt extends Fpdf
             $pdf->SetFont('Arial', 'B', 7);
             $pdf->SetFillColor(230, 230, 230);
             $pdf->Cell($mw[0] + $mw[1] + $mw[2] + $mw[3], 5, 'TOTAL', 1, 0, 'R', true);
-            $pdf->Cell($mw[4], 5, number_format($totalPct * 10, 2), 1, 0, 'R', true);
-            $pdf->Cell($mw[5], 5, number_format($totalKg, 3),       1, 0, 'R', true);
-            $pdf->Cell($mw[6], 5, '',                               1, 0, 'R', true);
-            $pdf->Cell($mw[7], 5, '',                               1, 0, 'L', true);
+            $pdf->Cell($mw[4], 5, number_format($totalPct * 10, 2),  1, 0, 'R', true);
+            $pdf->Cell($mw[5], 5, number_format($totalKg, 3) . ' kg', 1, 0, 'R', true);
+            $pdf->Cell($mw[6], 5, number_format($totalKg, 3),        1, 0, 'R', true);
+            $pdf->Cell($mw[7], 5, '',                                1, 0, 'L', true);
             $pdf->Ln();
         }
 

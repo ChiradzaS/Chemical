@@ -53,16 +53,13 @@ const API_BASE = window.laravelApiUrl || 'http://localhost/Chemical';
 const BATCH_QTY = 1000;
 const NEW_OPTION = '__new__';
 
-// Water. Used when a formula has no density recorded yet.
-const DEFAULT_DENSITY = 1;
-
 const BLANK_HEADER: FormulaHeader = {
   id: null,
   code: '',
   name: '',
   chemical_type: '',
   base_batch_qty: BATCH_QTY,
-  density_kg_per_l: String(DEFAULT_DENSITY),
+  density_kg_per_l: '',   // no default — it has to be measured, not assumed
   status: 'active',
   notes: '',
 };
@@ -81,14 +78,22 @@ const newLine = (): Line => ({
   instruction: '',
 });
 
-const num    = (v: any) => Number(v ?? 0) || 0;
-const r4     = (n: number) => Math.round(n * 10000) / 10000;
+const num = (v: any) => Number(v ?? 0) || 0;
+
+// percentages keep 4 places: 0.01 kg of a 1000 kg batch is 0.001%
+const r4 = (n: number) => Math.round(n * 10000) / 10000;
+
+// quantities keep 2, matching raw_materials.stock_on_hand
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
 const active = (m: Material) => m.is_active === undefined || Number(m.is_active) === 1;
 
-// "1.0200" from the database → "1.02" for the input box
+// "1.0200" from the database → "1.02" for the input box.
+// A formula saved before density was recorded comes back blank, not 1 — a
+// wrong density silently mis-converts every litre figure downstream
 const toDensityInput = (v: any) => {
   const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? String(Math.round(n * 10000) / 10000) : String(DEFAULT_DENSITY);
+  return Number.isFinite(n) && n > 0 ? String(Math.round(n * 10000) / 10000) : '';
 };
 
 // a row only counts once a material has been picked
@@ -172,8 +177,8 @@ const FormulaBuilder: React.FC = () => {
         key:             `l${i.id}`,
         raw_material_id: Number(i.raw_material_id),
         material_type:   i.material_type ?? '',
-        percentage:      num(i.percentage),
-        quantity:        r4(BATCH_QTY * num(i.percentage) / 100),
+        percentage:      r4(num(i.percentage)),
+        quantity:        r2(BATCH_QTY * num(i.percentage) / 100),
         uom:             i.uom ?? 'kg',
         entry_mode:      i.entry_mode === 'quantity' ? 'quantity' : 'percent',
         is_balance:      Number(i.is_balance) === 1,
@@ -222,7 +227,7 @@ const FormulaBuilder: React.FC = () => {
 
   const densityValue   = Number(header.density_kg_per_l);
   const densityOk      = Number.isFinite(densityValue) && densityValue > 0;
-  const batchLitres    = densityOk ? r4(BATCH_QTY / densityValue) : null;
+  const batchLitres    = densityOk ? r2(BATCH_QTY / densityValue) : null;
 
   // ── Line editing ─────────────────────────────────────────────────────────
   const patch = (key: string, changes: Partial<Line>) =>
@@ -230,12 +235,12 @@ const FormulaBuilder: React.FC = () => {
 
   const setPercent = (key: string, v: string) => {
     const pct = parseFloat(v) || 0;
-    patch(key, { percentage: r4(pct), quantity: r4(BATCH_QTY * pct / 100), entry_mode: 'percent' });
+    patch(key, { percentage: r4(pct), quantity: r2(BATCH_QTY * pct / 100), entry_mode: 'percent' });
   };
 
   const setQuantity = (key: string, v: string) => {
-    const qty = parseFloat(v) || 0;
-    patch(key, { quantity: r4(qty), percentage: r4(qty / BATCH_QTY * 100), entry_mode: 'quantity' });
+    const qty = r2(parseFloat(v) || 0);
+    patch(key, { quantity: qty, percentage: r4(qty / BATCH_QTY * 100), entry_mode: 'quantity' });
   };
 
   const setMaterial = (key: string, id: string) => {
@@ -302,7 +307,7 @@ const FormulaBuilder: React.FC = () => {
       return;
     }
     if (!densityOk) {
-      setToast({ msg: 'Enter a density greater than 0', ok: false });
+      setToast({ msg: 'Enter the density in kg/L', ok: false });
       return;
     }
     if (filled.length === 0) {
@@ -321,8 +326,8 @@ const FormulaBuilder: React.FC = () => {
         items: filled.map((l, i) => ({
           raw_material_id: l.raw_material_id,
           material_type:   l.material_type,
-          percentage:      l.is_balance ? balancePct : l.percentage,
-          quantity:        l.is_balance ? r4(BATCH_QTY * balancePct / 100) : l.quantity,
+          percentage:      l.is_balance ? balancePct : r4(l.percentage),
+          quantity:        l.is_balance ? r2(BATCH_QTY * balancePct / 100) : r2(l.quantity),
           uom:             l.uom,
           entry_mode:      l.entry_mode,
           is_balance:      l.is_balance ? 1 : 0,
@@ -371,7 +376,7 @@ const FormulaBuilder: React.FC = () => {
               </h1>
               <p className="text-slate-400 text-sm">
                 {header.code ? `${header.code} · ` : ''}Built against a {BATCH_QTY} kg batch
-                {batchLitres !== null && ` · about ${batchLitres.toFixed(0)} L`}
+                {batchLitres !== null && ` · about ${batchLitres.toFixed(2)} L`}
               </p>
             </div>
           </div>
@@ -461,8 +466,10 @@ const FormulaBuilder: React.FC = () => {
               />
               <p className="text-xs text-slate-400 mt-1">
                 {densityOk
-                  ? `${BATCH_QTY} kg ≈ ${batchLitres!.toFixed(0)} L`
-                  : 'Must be greater than 0'}
+                  ? `${BATCH_QTY} kg ≈ ${batchLitres!.toFixed(2)} L`
+                  : header.density_kg_per_l.trim() === ''
+                    ? 'Measure it — no default'
+                    : 'Must be greater than 0'}
               </p>
             </div>
           </div>
@@ -534,7 +541,7 @@ const FormulaBuilder: React.FC = () => {
                 {lines.map((l, i) => {
                   const picked = isFilled(l);
                   const pct = l.is_balance ? balancePct : l.percentage;
-                  const qty = l.is_balance ? r4(BATCH_QTY * balancePct / 100) : l.quantity;
+                  const qty = l.is_balance ? r2(BATCH_QTY * balancePct / 100) : l.quantity;
                   const locked = l.is_balance || !picked;
 
                   return (
@@ -550,7 +557,7 @@ const FormulaBuilder: React.FC = () => {
                           <option value="">Select ingredient</option>
                           {optionsFor(l).map(m => (
                             <option key={m.id} value={m.id}>
-                              {m.name}{active(m) ? '' : ' (inactive)'} — {Math.trunc(num(m.stock_on_hand))} {m.uom} on hand
+                              {m.name}{active(m) ? '' : ' (inactive)'} — {num(m.stock_on_hand).toFixed(2)} {m.uom} on hand
                             </option>
                           ))}
                         </select>
@@ -559,7 +566,7 @@ const FormulaBuilder: React.FC = () => {
                       <td className="px-2 py-2">
                         <input
                           type="number"
-                          step="1"
+                          step="0.001"
                           min="0"
                           max="100"
                           value={picked ? pct : ''}
@@ -573,7 +580,7 @@ const FormulaBuilder: React.FC = () => {
                       <td className="px-2 py-2">
                         <input
                           type="number"
-                          step="1"
+                          step="0.01"
                           min="0"
                           value={picked ? qty : ''}
                           disabled={locked}
@@ -621,8 +628,8 @@ const FormulaBuilder: React.FC = () => {
                   balanced ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                 }`}
               >
-                {grandTotal.toFixed(2)}%
-                {!balanced && ` — ${(100 - typedTotal).toFixed(2)} short`}
+                {grandTotal.toFixed(3)}%
+                {!balanced && ` — ${(100 - typedTotal).toFixed(3)} short`}
               </span>
             </div>
           </div>

@@ -1,23 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
+
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Create Products</title>
-    
+    <title>Material Adjustment
+        
+    </title>
 
-  
             <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
 <script type="module"
-        src="{{ asset('public/build/assets/reactproduct.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
+        src="{{ asset('public/build/assets/rawmaterial.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
 
 
-
-
-        
-
- 
+     
     
 </head>
 <body>
@@ -35,15 +32,62 @@
     ];
 
         // For products data  
+        // window.productsData = [
+        //     @foreach($products as $product)
+        //         {
+        //             id: {{ $product->id }},
+        //             name: "{{ $product->name }}",
+        //             productType: "{{ $product->productType }}"
+        //         }{{ !$loop->last ? ',' : '' }}
+        //     @endforeach
+        // ];
+
+
+                // For products data  
         window.productsData = [
             @foreach($products as $product)
                 {
                     id: {{ $product->id }},
                     name: "{{ $product->name }}",
-                    unitName: "{{ $product->unitPackId }}"
+                    productType: "{{ $product->productType }}",
+                    unitPackId: "{{ $product->unitPackId }}",
+                    actualSellingPrice: "{{ $product->actualSellingPrice }}",
+                    defaultSellingPrice: "{{ $product->defaultSellingPice }}"
+
                 }{{ !$loop->last ? ',' : '' }}
             @endforeach
         ];
+
+
+
+            // ── Chemical products ──────────────────────────────────────────────────────
+    window.chemicalProductsData = [
+        @foreach($chemicalProducts as $product)
+            {
+                id:                    {{ $product->id }},
+                name:                  "{{ addslashes($product->name) }}",
+                sku:                   "{{ $product->sku ?? 'null' }}",
+                category:              "{{ $product->category ?? '' }}",
+                brand:                 "{{ $product->brand ?? '' }}",
+                stock_unit_id:         {{ $product->stock_unit_id ?? 'null' }},
+                colour_id:             {{ $product->colour_id ?? 'null' }},
+                viscosity_id:          {{ $product->viscosity_id ?? 'null' }},
+                active_ingredient_id:  {{ $product->active_ingredient_id ?? 'null' }},
+                fragrance_id:          {{ $product->fragrance_id ?? 'null' }},
+                bag_type_id:           {{ $product->bag_type_id ?? 'null' }},
+                container_size_id:     {{ $product->container_size_id ?? 'null' }},
+                batch_size_litres:     {{ $product->batch_size_litres ?? 'null' }},
+                units_per_batch:       {{ $product->units_per_batch ?? 'null' }},
+                yield_percentage:      {{ $product->yield_percentage ?? 'null' }},
+                weight_per_unit_grams: {{ $product->weight_per_unit_grams ?? 'null' }},
+                price:                 {{ $product->price ?? 'null' }},
+                vat_applicable:        {{ $product->vat_applicable ?? 0 }},
+                concentration:         {{ $product->concentration ?? 'null' }},
+                dilution_ratio:        "{{ $product->dilution_ratio ?? '' }}"
+            }{{ !$loop->last ? ',' : '' }}
+        @endforeach
+    ];
+
 
                 // For products data  
         window.product = [
@@ -51,8 +95,7 @@
                 {
                     id: {{ $product->id }},
                     name: "{{ $product->name }}",
-                    productType: "{{ $product->productType }}",
-                    unitName: "{{ $product->productType }}"
+                    productType: "{{ $product->productType }}"
                 }{{ !$loop->last ? ',' : '' }}
             @endforeach
         ];
@@ -125,158 +168,17 @@
         ];
 
 
-
-                window.vehicleTypesData = [
-            @foreach($vehicletypes as $vehicle)
-                {
-                    id: {{ $vehicle->id }},
-                    name: "{{ $vehicle->name }}"
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-                        window.driverTypesData = [
-            @foreach($drivers as $driver)
-                {
-                    id: {{ $driver->id }},
-                    name: "{{ $driver->name }}"
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-//============================================ChemicalTypes=========================================================
         
 
-         window.chemicalTypesData = [
-            @foreach($chemicalTypes as $chemicalType)
+         window.stateTypesData = [
+            @foreach($statustypes as $stateType)
                 {
-                    id: {{ $chemicalType->id }},
-                    name: "{{ $chemicalType->name }}"
+                    id: {{ $stateType->id }},
+                    name: "{{ $stateType->name }}"
 
                 }{{ !$loop->last ? ',' : '' }}
             @endforeach
         ];
-
-
-
-        window.chemicalTypesData = [
-            @foreach($chemicalTypes as $chemicalCustomer)
-                {
-                    id: {{ $chemicalCustomer->id }},
-                    name: "{{ $chemicalCustomer->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-        window.viscosityData = [
-            @foreach($viscosity as $viscosit)
-                {
-                    id: {{ $viscosit->id }},
-                    name: "{{ $viscosit->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-        window.activeIngredientsData = [
-            @foreach($activeIngredients as $activeIngredient)
-                {
-                    id: {{ $activeIngredient->id }},
-                    name: "{{ $activeIngredient->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-        window.fragranceData = [
-            @foreach($fragrances as $fragrance)
-                {
-                    id: {{ $fragrance->id }},
-                    name: "{{ $fragrance->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-
-        window.fragranceData = [
-            @foreach($fragrances as $fragrance)
-                {
-                    id: {{ $fragrance->id }},
-                    name: "{{ $fragrance->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-        window.chemicalColoursData = [
-            @foreach($chemicalColours as $chemicalColour)
-                {
-                    id: {{ $chemicalColour->id }},
-                    name: "{{ $chemicalColour->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-        window.bottleTypesData = [
-            @foreach($bottleTypes as $bottleType)
-                {
-                    id: {{ $bottleType->id }},
-                    name: "{{ $bottleType->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-
-        window.containerSizesData = [
-            @foreach($containerSizes as $containerSize)
-                {
-                    id: {{ $containerSize->id }},
-                    name: "{{ $containerSize->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-        window.capTypesData = [
-            @foreach($capTypes as $capType)
-                {
-                    id: {{ $capType->id }},
-                    name: "{{ $capType->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-        window.lableTypesData = [
-            @foreach($lableTypes as $lableType)
-                {
-                    id: {{ $lableType->id }},
-                    name: "{{ $lableType->name }}"
-
-                }{{ !$loop->last ? ',' : '' }}
-            @endforeach
-        ];
-
-
-
-
-
-    
-
-
-
 
 
 

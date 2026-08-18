@@ -83,10 +83,10 @@ interface PF {
   invoiceDescriptionOverridden: boolean;
   stockOnHand:                  string;
   stockUnitId:                  string;  // same values as container size
-  formulaCode:                  string;
+  formulaCode:                  string;  // ← required; a product cannot be saved without one
   phLevel:                      string;
   viscosityId:                  string;
-  activeIngredientId:           string;  // optional
+  activeIngredientId:           string;  // ← required
   fragranceId:                  string;
   colourId:                     string;
   concentration:                string;
@@ -450,6 +450,8 @@ const ProductForm: React.FC = () => {
     ? unitWeightKg * costPerKg
     : null;
 
+  const hasUnitWeight = !!unitWeightKg && unitWeightKg > 0;
+
   // The same ingredient, scaled to one unit rather than the whole batch:
   // its share of the unit's weight × its price
   const lineCostPerUnit = (it: FormulaItem) => {
@@ -457,6 +459,16 @@ const ProductForm: React.FC = () => {
     if (rate === null || !unitWeightKg || unitWeightKg <= 0) return null;
     return unitWeightKg * ((numOrNull(it.percentage) ?? 0) / 100) * rate;
   };
+
+  /* What this ingredient weighs in ONE container — the figure the filling line
+     actually needs. The batch percentage means nothing on the floor; grams in
+     the bottle does. */
+  const lineGramsPerUnit = (it: FormulaItem) => {
+    if (!unitWeightKg || unitWeightKg <= 0) return null;
+    return unitWeightKg * ((numOrNull(it.percentage) ?? 0) / 100) * 1000;
+  };
+
+  const totalGramsPerUnit = hasUnitWeight ? unitWeightKg! * 1000 : null;
 
   /* ── Pricing ──
      UI exposes only Cost price + Markup %.
@@ -475,6 +487,9 @@ const ProductForm: React.FC = () => {
   const incl   = excl + vat;
   const mrgn   = excl > 0 ? ((excl - cost) / excl) * 100 : 0;
   const sellingPriceMissing = submitted && (!excl || excl <= 0);
+
+  // Formula is required — flagged the same way as the other mandatory fields
+  const formulaMissing = submitted && !form.formulaCode.trim();
 
   /* Selling price and markup are two views of one number. Markup is what gets
      stored, so typing a price back-solves the markup rather than adding a
@@ -533,10 +548,11 @@ const ProductForm: React.FC = () => {
     invoice_description:    form.invoiceDescription      || null,
     stock_on_hand:          parseFloat(form.stockOnHand) || 0,
     stock_unit_id:          form.stockUnitId             || null,
-    formula_code:           form.formulaCode             || null,
+    formula_code:           form.formulaCode,            // required — never null
     ph_level:               form.phLevel                 ? parseFloat(form.phLevel)           : null,
     viscosity_id:           form.viscosityId             || null,
-    active_ingredient_id:   form.activeIngredientId      || null,
+    // required — sent as a number so an empty select can never reach an int column
+    active_ingredient_id:   form.activeIngredientId      ? Number(form.activeIngredientId)    : null,
     fragrance_id:           form.fragranceId             || null,
     colour_id:              form.colourId                || null,
     concentration:          form.concentration           ? parseFloat(form.concentration)     : null,
@@ -576,9 +592,11 @@ const ProductForm: React.FC = () => {
     if (!form.sku.trim())         { flash('Batch code is required', false);          return; }
     if (!form.category)           { flash('Category is required', false);            return; }
     if (!form.brand)              { flash('Brand is required', false);               return; }
+    // Formula drives density, unit weight and recipe cost — checked before them
+    if (!form.formulaCode.trim()) { flash('Formula is required', false);             return; }
     if (!form.stockUnitId)        { flash('Package / unit is required', false);      return; }
     if (!form.viscosityId)        { flash('Viscosity is required', false);           return; }
-    // active ingredient is optional — no check
+    if (!form.activeIngredientId) { flash('Active ingredient is required', false);   return; }
     if (!form.fragranceId)        { flash('Fragrance is required', false);           return; }
     if (!form.colourId)           { flash('Colour is required', false);              return; }
     if (!form.bagTypeId)          { flash('Container / bottle type is required', false); return; }
@@ -803,7 +821,7 @@ const ProductForm: React.FC = () => {
           <S icon="🧪" title="Formula makeup" />
 
           {!pickedFormula ? (
-            <p className="text-xs text-gray-400">
+            <p className={`text-xs ${formulaMissing ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
               Pick a formula in the Formulation column to see its ingredients.
             </p>
           ) : (
@@ -831,6 +849,14 @@ const ProductForm: React.FC = () => {
                 </p>
               )}
 
+              {/* What one container holds — the grams column below is scaled to it */}
+              {hasUnitWeight && (
+                <p className="px-3 py-1.5 text-[10px] text-blue-700 bg-blue-50 border-b border-blue-100 font-semibold">
+                  Per {pickedContainer?.name ?? 'unit'} — {unitWeightKg!.toFixed(3)} kg
+                  ({totalGramsPerUnit!.toFixed(0)} g)
+                </p>
+              )}
+
               {itemsLoading ? (
                 <div className="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading ingredients…
@@ -843,7 +869,12 @@ const ProductForm: React.FC = () => {
                     <tr>
                       <th className="text-left px-3 py-1.5 font-bold">Ingredient</th>
                       <th className="text-right px-2 py-1.5 font-bold w-14">%</th>
-                      {!!unitWeightKg && unitWeightKg > 0 && (
+                      {hasUnitWeight && (
+                        <th className="text-right px-2 py-1.5 font-bold w-20">
+                          g / {pickedContainer?.name ?? 'unit'}
+                        </th>
+                      )}
+                      {hasUnitWeight && (
                         <th className="text-right px-3 py-1.5 font-bold w-20">Cost</th>
                       )}
                     </tr>
@@ -865,7 +896,12 @@ const ProductForm: React.FC = () => {
                           <td className="px-2 py-1.5 text-right font-mono text-gray-600">
                             {pct.toFixed(2)}
                           </td>
-                          {!!unitWeightKg && unitWeightKg > 0 && (
+                          {hasUnitWeight && (
+                            <td className="px-2 py-1.5 text-right font-mono font-bold text-gray-900">
+                              {lineGramsPerUnit(it)!.toFixed(1)}
+                            </td>
+                          )}
+                          {hasUnitWeight && (
                             <td className="px-3 py-1.5 text-right font-mono font-semibold text-gray-800">
                               {lineCostPerUnit(it) === null
                                 ? <span className="text-amber-600 font-sans font-medium text-[10px]">no price</span>
@@ -876,6 +912,24 @@ const ProductForm: React.FC = () => {
                       );
                     })}
                   </tbody>
+                  {hasUnitWeight && (
+                    <tfoot>
+                      <tr className="bg-gray-50 border-t border-gray-200">
+                        <td className="px-3 py-1.5 font-bold text-gray-500 uppercase text-[9px] tracking-wider">
+                          Total
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono text-gray-500">
+                          {items.reduce((s, it) => s + (numOrNull(it.percentage) ?? 0), 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-gray-900">
+                          {items.reduce((s, it) => s + (lineGramsPerUnit(it) ?? 0), 0).toFixed(1)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-500">
+                          {recipeCostUnit === null ? '—' : recipeCostUnit.toFixed(4)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               )}
 
@@ -931,12 +985,12 @@ const ProductForm: React.FC = () => {
         <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-y-auto flex flex-col gap-3">
           <S icon="⚗️" title="Formulation" />
 
-          {/* Formulas — list of formula names */}
+          {/* Formulas — required. Drives density, unit weight and recipe cost. */}
           <div>
-            <L t="Formulas" />
+            <L t="Formulas" required />
             <div className="relative">
               <select
-                className={`${I} appearance-none pr-7`}
+                className={`${RI(formulaMissing)} appearance-none pr-7`}
                 value={form.formulaCode}
                 onChange={ev('formulaCode')}
               >
@@ -947,6 +1001,11 @@ const ProductForm: React.FC = () => {
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
             </div>
+            {formulaMissing && (
+              <p className="text-[10px] text-red-500 font-semibold mt-0.5">
+                Pick the formula this product is made from.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -970,14 +1029,15 @@ const ProductForm: React.FC = () => {
                 err={missing(form.viscosityId)}
               />
             </div>
-            {/* Active ingredient — optional */}
+            {/* Active ingredient — required */}
             <div>
-              <L t="Active ingredient" />
+              <L t="Active ingredient" required />
               <SelId
                 v={form.activeIngredientId}
                 onCh={set('activeIngredientId')}
                 data={activeIngredients}
-                ph="None"
+                ph="Select active ingredient…"
+                err={missing(form.activeIngredientId)}
               />
             </div>
             <div>

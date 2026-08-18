@@ -7,8 +7,13 @@
     <title>Chemical Formulas</title>
 
 
-      @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/chemicalformula.tsx']) 
+
+
+                 <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+<script type="module"
+        src="{{ asset('public/build/assets/chemicalformula.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
+
+
         
 
 
