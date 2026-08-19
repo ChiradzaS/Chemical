@@ -51,7 +51,13 @@ const API_BASE = window.laravelApiUrl || 'http://localhost/Chemical';
 
 // Batch size is fixed — every formula is written against a 1000 kg batch
 const BATCH_QTY = 1000;
-const NEW_OPTION = '__new__';
+
+// Sentinels for the formula picker. Both need a real <option> of their own:
+// a controlled <select> whose value matches no option silently displays the
+// FIRST option instead, which made "+ Add new formula" look pre-selected and
+// swallowed the first click on it.
+const NEW_OPTION     = '__new__';
+const UNSAVED_OPTION = '__unsaved__';
 
 const BLANK_HEADER: FormulaHeader = {
   id: null,
@@ -148,13 +154,23 @@ const FormulaBuilder: React.FC = () => {
 
   useEffect(() => { loadLookups(); }, [loadLookups]);
 
+  // ── The picker's value ───────────────────────────────────────────────────
+  // Every state the picker can be in maps to an option that actually exists:
+  // nothing chosen → '', a started-but-unsaved formula → UNSAVED_OPTION,
+  // a loaded formula → its id.
+  const selectValue =
+    header.id !== null ? String(header.id)
+    : header.name     ? UNSAVED_OPTION
+    : '';
+
   // ── Dropdown → load a formula, or open the new-name prompt ───────────────
   const onSelectChange = (value: string) => {
     if (value === NEW_OPTION) {
       setPrompt({ name: '', code: '' });
       return;
     }
-    if (!value) return;
+    // the placeholder and the unsaved marker are labels, not destinations
+    if (value === '' || value === UNSAVED_OPTION) return;
     selectFormula(value);
   };
 
@@ -397,13 +413,14 @@ const FormulaBuilder: React.FC = () => {
               <label className={lbl}>Formula</label>
               <div className="relative">
                 <select
-                  value={header.id ?? ''}
+                  value={selectValue}
                   onChange={e => onSelectChange(e.target.value)}
                   className={sel}
                 >
+                  <option value="">Select a formula</option>
                   <option value={NEW_OPTION}>+ Add new formula</option>
                   {header.id === null && header.name && (
-                    <option value="">{header.name} (unsaved)</option>
+                    <option value={UNSAVED_OPTION}>{header.name} (unsaved)</option>
                   )}
                   {formulas.map(f => (
                     <option key={f.id} value={f.id!}>{f.name}</option>

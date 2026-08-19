@@ -28,8 +28,6 @@ export default defineConfig({
                 'resources/js/chemicalmaterial.tsx',
                 'resources/js/receivestock.tsx',
                 'resources/js/rawmaterial.tsx',
-
-
             ],
 
             refresh: true,
