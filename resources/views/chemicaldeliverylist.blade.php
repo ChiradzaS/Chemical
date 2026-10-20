@@ -7,16 +7,17 @@
     <title>Chemical Invoices &amp; Deliveries</title>
 
 
-<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script src="{{ asset('public/build/assets/chemicaldeliverylist.js') }}" type="module" ></script> 
-
+    <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+    <script src="{{ asset('public/build/assets/chemicaldeliverylist.js') }}" type="module"></script>
+    
 
 
 </head>
 <body>
-<script>
 
-    window.laravelApiUrl = "{{ url('') }}/Chemical";
+<script>
+    // url('') is already http://localhost/Chemical — don't add /Chemical again
+    window.laravelApiUrl = "{{ url('') }}";
 
     window.customersData = [
         @foreach($customers as $customer)
@@ -45,32 +46,9 @@
             }{{ !$loop->last ? ',' : '' }}
         @endforeach
     ];
-
 </script>
 
-    <div id="root"></div>
-
-        <script>
-        // console.log('=== CHECKING REACT SETUP ===');
-        // console.log('Root div:', document.getElementById('root'));
-        
-        // Check if Vite assets loaded
-        setTimeout(() => {
-            //console.log('Checking React after delay...');
-            // console.log('React available:', typeof window.React !== 'undefined');
-            
-            const rootContent = document.getElementById('root').innerHTML;
-            // console.log('Root content:', rootContent);
-            
-            if (rootContent.trim() === '') {
-                document.getElementById('react-status').innerHTML = 'React NOT loaded ❌';
-                // console.error('React failed to mount!');
-            } else {
-                document.getElementById('react-status').innerHTML = 'React loaded ✅';
-                // console.log('React mounted successfully!');
-            }
-        }, 2000);
-    </script>
+<div id="root"></div>
 
 </body>
 </html>

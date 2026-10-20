@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Create Products</title>
-    
+
 
   
             <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
-<script type="module"
-        src="{{ asset('public/build/assets/reactproduct.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script>
+ <script type="module"
+        src="{{ asset('public/build/assets/reactproduct.js') }}?v={{ filemtime(public_path('build/assets/receivestock.js')) }}"></script> 
+
+        
 
 
 

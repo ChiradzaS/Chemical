@@ -12,12 +12,40 @@
 <link rel="stylesheet" href="{{ asset('public/css/select2.min.css') }}">
 
 <link rel="stylesheet" href="styles.css">
+
+{{-- SweetAlert2 (for a fully offline install, download these two files into public/ and point to them) --}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.min.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
 </head>
 <body>
 
 <section>
 
 <script>
+// Logout confirm (SweetAlert) — falls back to the browser confirm if SweetAlert didn't load
+function confirmLogout(e, url) {
+    e.preventDefault();
+    if (typeof Swal === 'undefined') {
+        if (confirm('Log out of Buzz Chem?')) window.location.href = url;
+        return false;
+    }
+    Swal.fire({
+        title: 'Log out?',
+        text: 'You will need to sign in again to use Buzz Chem.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Log out',
+        cancelButtonText: 'Stay signed in',
+        confirmButtonColor: '#2563eb',
+        cancelButtonColor: '#6b7280',
+        reverseButtons: true,
+        focusCancel: true
+    }).then(function (r) {
+        if (r.isConfirmed) window.location.href = url;
+    });
+    return false;
+}
+
 function myFunc1(ok) {
     document.getElementById('spinnerContainer').style.display = 'block';
     setTimeout(function () {
@@ -124,7 +152,7 @@ function myFunc1(ok) {
   z-index: 999;
   padding: 10px 0;
 }
-#cssmenu ul li > ul { width: 200px; }
+#cssmenu ul li > ul { width: 230px; }
 #cssmenu ul ul ul { position: absolute; }
 #cssmenu ul ul li:hover > ul { left: 100%; top: -10px; border-radius: 5px; }
 #cssmenu ul li > ul li {
@@ -154,6 +182,15 @@ function myFunc1(ok) {
 #cssmenu > ul > li > a:hover { background: #080808; color: #ffffff; }
 #cssmenu ul ul a:hover { color: #ffffff; }
 #cssmenu > ul > li.has-sub > a:hover:before { border-top: 5px solid #ffffff; }
+
+/* signed-in user, pinned to the far right of the bar (same colours as the menu) */
+#cssmenu > ul > li.user-item { float: right; }
+#cssmenu > ul > li.user-item > span {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 20px; color: #ffffff; font: 700 13px Arial, Helvetica, sans-serif;
+  text-shadow: 1px 1px 0 rgba(0,0,0,.4); line-height: 1; cursor: default;
+}
+#cssmenu > ul > li.user-item svg { width: 15px; height: 15px; margin-top: -2px; }
 
 /* section divider inside dropdown */
 #cssmenu ul li > ul li.divider {
@@ -307,13 +344,15 @@ footer {
   </li> -->
 
   {{-- Machine --}}
-  <li class='active has-sub'><a href='#'><span>Machine</span></a>
+
+
+  <!-- <li class='active has-sub'><a href='#'><span>Machine</span></a>
     <ul>
       <li><a href="#" onclick="myFunc1('machinery/create')"><span>Create</span></a></li>
       <li><a href="#" onclick="myFunc1('machinery')"><span>List</span></a></li>
-      <!-- <li><a href="#" onclick="myFunc1('terminals')"><span>Active Machines</span></a></li> -->
+     <li><a href="#" onclick="myFunc1('terminals')"><span>Active Machines</span></a></li> 
     </ul>
-  </li>
+  </li> -->
 
   {{-- Users --}}
   <li class='active has-sub'><a href='#'><span>Users</span></a>
@@ -394,13 +433,33 @@ footer {
 
 
 
-  {{-- Reporting --}}
+  {{-- Supply --}}
   <li class='active has-sub'><a href='#'><span>Supply</span></a>
     <ul>
       <li><a href="#" onclick="myFunc1('formulas')"><span>Create Chemical Formulas</span></a></li>
       <li><a href="#" onclick="myFunc1('reactrawmaterial')"><span>Receive Material</span></a></li>
 
       <li><a href="#" onclick="myFunc1('chemicalmaterial')"><span>List/Add Material</span></a></li>
+    </ul>
+  </li>
+
+  {{-- Reports --}}
+  <li class='active has-sub'><a href='#'><span>Reports</span></a>
+    <ul>
+      <li class='section-label'><a href='#'><span>Sales</span></a></li>
+      <li><a href="#" onclick="myFunc1('reports/sales')"><span>Sales Report</span></a></li>
+ 
+      <li><a href="#" onclick="myFunc1('reports/outstandingorders')"><span>Outstanding Orders Report</span></a></li>
+
+      <li class='divider'></li>
+      <li class='section-label'><a href='#'><span>Stock</span></a></li>
+      <li><a href="#" onclick="myFunc1('reports/stockreport')"><span>Stock Report</span></a></li>
+      <li><a href="#" onclick="myFunc1('reports/rawmaterialstock')"><span>Raw Material Stock &amp; Usage</span></a></li>
+
+      <li class='divider'></li>
+      <li class='section-label'><a href='#'><span>Operations</span></a></li>
+
+      <li><a href="#" onclick="myFunc1('reports/production')"><span>Production Report</span></a></li>
     </ul>
   </li>
 
@@ -428,8 +487,18 @@ footer {
     </ul>
   </li> 
 
-  {{-- Logout --}}
-  <!-- <li class='last'><a href="{{ route('signout') }}"><span>Logout</span></a></li> -->
+  {{-- Logout (next to About, same style) --}}
+  <li><a href="{{ route('signout') }}" onclick="return confirmLogout(event, this.href);"><span>Logout</span></a></li>
+
+  {{-- Signed-in user (far right) --}}
+  @auth
+  <li class='user-item'>
+    <span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+      {{ Auth::user()->name }}
+    </span>
+  </li>
+  @endauth
 
 </ul>
 </div>

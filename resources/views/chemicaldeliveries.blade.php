@@ -8,6 +8,9 @@
 
 
 
+
+
+
     <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
     <script type="module" src="{{ asset('public/build/assets/chemicaldelivery.js') }}"></script>
 
@@ -64,7 +67,8 @@
                 id:                {{ $product->id }},
                 name:              "{{ addslashes($product->name) }}",
                 sku:               "{{ addslashes($product->sku ?? '') }}",
-                price:             {{ $product->price ?? 0 }},
+                price:             {{ (float) ($product->price ?? 0) }},            // selling price excl. VAT
+                price_incl_vat:    {{ (float) ($product->price_incl_vat ?? 0) }},   // selling price incl. VAT
                 vat_applicable:    {{ $product->vat_applicable ? 1 : 0 }},
                 vat_rate:          {{ $product->vat_rate ?? 15 }},
                 container_size_id: {{ $product->container_size_id ?? 'null' }},
@@ -90,19 +94,6 @@
 
     <div id="root"></div>
 
-    <script>
-        setTimeout(() => {
-            const rootEl = document.getElementById('root');
-            const rootContent = rootEl ? rootEl.innerHTML : '';
-            const statusEl = document.getElementById('react-status');
-
-            if (statusEl) {
-                statusEl.innerHTML = rootContent.trim() === ''
-                    ? 'React NOT loaded ❌'
-                    : 'React loaded ✅';
-            }
-        }, 2000);
-    </script>
 
 </body>
 </html>

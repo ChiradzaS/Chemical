@@ -7,8 +7,13 @@
     <title>Create Products List</title>
     
 
-<link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
+ <link rel="stylesheet" href="{{ asset('public/build/assets/app.css') }}">
 <script src="{{ asset('public/build/assets/chemicalproductlist.js ') }}" type="module" ></script> 
+
+
+
+        
+
 
 
  

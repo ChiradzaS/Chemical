@@ -20,7 +20,9 @@ class ChemicalProduct extends Model
         'filling_speed_per_hour', 'yield_percentage', 'shelf_life_months',
         'weight_source', 'weight_per_unit_grams',
         'raw_material_cost', 'packaging_cost', 'labour_cost_per_unit',
-        'overhead_cost', 'markup_percentage', 'price',
+        'overhead_cost', 'markup_percentage',
+        'price',        // selling price excl. VAT
+        'price_incl',   // selling price incl. VAT
         'vat_applicable', 'vat_rate',
         'show_weight_on_label', 'show_date_on_label',
         'show_expiry_date_on_label', 'show_barcode_on_label',

@@ -80,24 +80,26 @@ class ChemicalJobCardController extends Controller
             return response()->json(['error' => 'No job card data provided'], 422);
         }
 
-        // Create job card
+        // Empty dropdowns arrive as '' — store them as NULL so number columns don't reject them
+        $val = fn ($key) => (isset($jobCardData[$key]) && $jobCardData[$key] !== '') ? $jobCardData[$key] : null;
+
+        // Create job card (no active ingredient — job cards don't use it)
         $jobCard = new ChemicalJobCard;
-        $jobCard->customerId         = $jobCardData['customerId']         ?? null;
-        $jobCard->productId          = $jobCardData['productId']          ?? null;
-        $jobCard->quantity           = $jobCardData['quantity']           ?? null;
-        $jobCard->batchCount         = $jobCardData['batchCount']         ?? null;
-        $jobCard->unitId             = $jobCardData['unitId']             ?? null;
-        $jobCard->containerSizeId    = $jobCardData['containerSizeId']    ?? null;
-        $jobCard->colourId           = $jobCardData['colourId']           ?? null;
-        $jobCard->viscosityId        = $jobCardData['viscosityId']        ?? null;
-        $jobCard->activeIngredientId = $jobCardData['activeIngredientId'] ?? null;
-        $jobCard->fragranceId        = $jobCardData['fragranceId']        ?? null;
-        $jobCard->bottleTypeId       = $jobCardData['bottleTypeId']       ?? null;
-        $jobCard->weightPerUnit      = $jobCardData['weightPerUnit']      ?? null;
-        $jobCard->totalUnits         = $jobCardData['totalUnits']         ?? null;
-        $jobCard->barcode            = $jobCardData['barcode']            ?? null;
-        $jobCard->notes              = $jobCardData['notes']              ?? null;
-        $jobCard->startDate          = $jobCardData['startDate']          ?? now()->toDateString();
+        $jobCard->customerId         = $val('customerId');
+        $jobCard->productId          = $val('productId');
+        $jobCard->quantity           = $val('quantity');
+        $jobCard->batchCount         = $val('batchCount');
+        $jobCard->unitId             = $val('unitId');
+        $jobCard->containerSizeId    = $val('containerSizeId');
+        $jobCard->colourId           = $val('colourId');
+        $jobCard->viscosityId        = $val('viscosityId');
+        $jobCard->fragranceId        = $val('fragranceId');
+        $jobCard->bottleTypeId       = $val('bottleTypeId');
+        $jobCard->weightPerUnit      = $val('weightPerUnit');
+        $jobCard->totalUnits         = $val('totalUnits');
+        $jobCard->barcode            = $val('barcode');
+        $jobCard->notes              = $val('notes');
+        $jobCard->startDate          = $val('startDate') ?? now()->toDateString();
         $jobCard->stateId            = 61;
         $jobCard->save();
 

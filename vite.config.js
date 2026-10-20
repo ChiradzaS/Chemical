@@ -8,26 +8,45 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/js/app.tsx',
-                'resources/js/chemicaldelivery.tsx',
-                'resources/js/chemicaldeliverylist.tsx',
-                'resources/js/chemicaljobcardlist.tsx',
-                'resources/js/chemicalproductlist.tsx',
-                'resources/js/createjobcard.tsx',
-                'resources/js/jobcardReport.tsx',
-                'resources/js/reactdeliveriescreate.tsx',
-                'resources/js/reactdeliverylist.tsx',
-                'resources/js/reactjoblist.tsx',
+
+                // ── Login ──
+            
+
+                // ── Products / orders / job cards ──
                 'resources/js/reactproduct.tsx',
-                'resources/js/reactorderlist.tsx',
-                'resources/js/chemicaljobcard.tsx',
-                'resources/js/stockadjustment.tsx',
+                'resources/js/chemicalproductlist.tsx',
                 'resources/js/chemicalorderlist.tsx',
                 'resources/js/chemicalorder.tsx',
-                'resources/js/about.tsx',
+                'resources/js/chemicaljobcard.tsx',
+                'resources/js/chemicaljobcardlist.tsx',
+                'resources/js/createjobcard.tsx',
+                'resources/js/jobcardReport.tsx',
+                'resources/js/reactjoblist.tsx',
+                'resources/js/reactorderlist.tsx',
+
+                // ── Invoices / deliveries ──
+                'resources/js/chemicaldelivery.tsx',
+                'resources/js/chemicaldeliverylist.tsx',
+                'resources/js/reactdeliveriescreate.tsx',
+                'resources/js/reactdeliverylist.tsx',
+
+                // ── Stock / supply ──
+                'resources/js/stockadjustment.tsx',
                 'resources/js/chemicalformula.tsx',
                 'resources/js/chemicalmaterial.tsx',
                 'resources/js/receivestock.tsx',
                 'resources/js/rawmaterial.tsx',
+                'resources/js/loginpage.tsx',
+
+                // ── Reports ──
+                'resources/js/salesreport.tsx',
+                'resources/js/outstandingorders.tsx',
+                'resources/js/stockreport.tsx',
+                'resources/js/Rawmaterialstock.tsx',
+                'resources/js/ProductionReport.tsx',
+
+                // ── Other ──
+                'resources/js/about.tsx',
             ],
 
             refresh: true,

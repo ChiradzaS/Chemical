@@ -28,7 +28,7 @@ use App\Http\Controllers\ProductionitemController;
 use App\Http\Controllers\InvoicesController;
 use App\Http\Controllers\InvoiceItemController;
 use App\Http\Controllers\UserDetailsController;
-use App\Http\Controllers\CustomAuthController;
+
 use App\Http\Controllers\EmailController;
 use App\Http\Controllers\CustomerAllocationController;
 use App\Http\Controllers\ValidateController;
@@ -66,11 +66,14 @@ use App\Http\Controllers\ChemicalDeliveryController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\OrderController;
 
-
-
-
-
-
+// Moved up from further down the file — `use` lines can't sit inside the auth group
+use App\Http\Controllers\CustomAuthController;
+use App\Http\Controllers\MenuController;
+use App\Http\Controllers\CompanyInfoController;
+use App\Http\Controllers\RawMaterialController;
+use App\Http\Controllers\StockReceiptController;
+use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\RawMaterialAdjustmentController;
 
 
 /*
@@ -84,14 +87,112 @@ use App\Http\Controllers\OrderController;
 |
 */
 
-Route::get('/', function () {
-    return view('view');
-    //return view('login');
+
+
+
+// 1) With the other `use` lines at the TOP of the file:
+use App\Http\Controllers\ProductionReportController;
+
+// 2) INSIDE the auth group, ABOVE the `/reports/{report}` placeholder route
+//    (next to the other report routes):
+Route::get('/reports/production',      [ProductionReportController::class, 'page']);
+Route::get('/reports/production/data', [ProductionReportController::class, 'data']);
+
+// 3) In the placeholder route, remove 'production' from the whereIn list:
+//    ->whereIn('report', ['margin','purchases']);
+
+
+// 1) With the other `use` lines at the TOP of the file:
+use App\Http\Controllers\RawMaterialStockController;
+
+// 2) INSIDE the auth group, ABOVE the `/reports/{report}` placeholder route
+//    (next to the other report routes):
+Route::get('/reports/rawmaterialstock',      [RawMaterialStockController::class, 'page']);
+Route::get('/reports/rawmaterialstock/data', [RawMaterialStockController::class, 'data']);
+
+// 3) In the placeholder route, remove 'raw-material-stock' from the whereIn list:
+//    ->whereIn('report', ['margin','purchases','production']);
+
+
+
+
+// 1) With the other `use` lines at the TOP of the file:
+use App\Http\Controllers\StockReportController;
+
+// 2) INSIDE the auth group, ABOVE the `/reports/{report}` placeholder route
+//    (next to the other report routes):
+Route::get('/reports/stockreport',      [StockReportController::class, 'page']);
+Route::get('/reports/stockreport/data', [StockReportController::class, 'data']);
+
+// 3) In the placeholder route, remove 'finished-stock' from the whereIn list:
+//    ->whereIn('report', ['margin','raw-material-stock','purchases','production']);
+
+// ── routes/web.php ─────────────────────────────────────────────────────────
+
+// 1) With the other `use` lines at the TOP of the file:
+use App\Http\Controllers\OutstandingOrdersController;
+
+// 2) INSIDE the auth group, ABOVE the `/reports/{report}` placeholder route
+//    (next to the sales report routes):
+Route::get('/reports/outstandingorders',      [OutstandingOrdersController::class, 'page']);
+Route::get('/reports/outstandingorders/data', [OutstandingOrdersController::class, 'data']);
+
+// 3) In the placeholder route, remove 'outstanding-orders' from the whereIn list:
+//    ->whereIn('report', ['margin','finished-stock','raw-material-stock','purchases','production']);
+// ── routes/web.php ─────────────────────────────────────────────────────────
+
+// 1) With the other `use` lines at the TOP of the file:
+use App\Http\Controllers\SalesReportController;
+
+// 2) INSIDE the auth group, ABOVE the `/reports/{report}` placeholder route:
+Route::get('/reports/sales',        [SalesReportController::class, 'page']);
+Route::get('/reports/sales/data',   [SalesReportController::class, 'data']);
+Route::get('/reports/sales/export', [SalesReportController::class, 'export']);
+
+// 3) In the placeholder route, remove 'sales' from the whereIn list:
+//    ->whereIn('report', ['margin','outstanding-orders','finished-stock','raw-material-stock','purchases','production']);
+//=====================================================================================================================
+// PUBLIC ROUTES — no login needed
+//=====================================================================================================================
+
+// PUBLIC ROUTES — no login needed
+Route::get('login', [CustomAuthController::class, 'index'])->name('login');
+Route::post('custom-login', [CustomAuthController::class, 'customLogin'])
+    ->middleware('throttle:5,1')
+    ->name('login.custom');
+
+// Old "Register" links → just go to login (no self sign-up)
+Route::get('registration', fn () => redirect()->route('login'))->name('register-user');
+
+
+//=====================================================================================================================
+// PROTECTED ROUTES — everything from here to the end of the file needs a logged-in user
+//=====================================================================================================================
+
+Route::middleware('auth')->group(function () {
+
+Route::get('/', [MenuController::class, 'index'])->name('dashboard');   // shows view.blade.php
+Route::get('signout', [CustomAuthController::class, 'signOut'])->name('signout');
+
+Route::get('customerMenu', function () {
+    return view('customerMenu');
 });
 
+Route::get('employeeMenu', function () {
+    return view('employeeMenu');
+});
 
+Route::get('supplierMenu', function () {
+    return view('supplierMenu');
+});
 
+Route::get('controllerMenu', function () {
+    return view('controllerMenu');
+});
 
+Route::get('InventoryMenu', function () {
+    return view('InventoryMenu');
+});
 
 
 //=======================================================================================================REACT WEB ROUTES =====================================================================================================================================
@@ -272,23 +373,6 @@ Route::get('/materialadjustment', function () {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Route::get('/print/invoice',  [PrintController::class, 'printInvoice']);
 // Route::get('/print/delivery', [PrintController::class, 'printDelivery']);
 // Route::get('/print/both',     [PrintController::class, 'printBoth']);
@@ -313,40 +397,6 @@ Route::get('/chemicaldeliveries/destroy', [ChemicalDeliveryController::class, 'd
 Route::get('/settings', function () {
     return view('settings'); // This route will load your React application
 })->name('settings');
-
-Route::get('view', function () {
-    return view('view');
-});
-
-Route::get('customerMenu', function () {
-    return view('customerMenu');
-});
-
-Route::get('employeelogin', function () {
-    return view('employeelogin');
-});
-
-Route::get('employeeMenu', function () {
-    return view('employeeMenu');
-});
-
-Route::get('supplierMenu', function () {
-    return view('supplierMenu');
-});
-
-Route::get('controllerMenu', function () {
-    return view('controllerMenu');
-});
-
-Route::get('InventoryMenu', function () {
-    return view('InventoryMenu');
-});
-
-
-// In routes/web.php
-Route::get('/errorpage', function () {
-    return view('errorpage');
-})->name('errorpage');
 
 
  
@@ -441,26 +491,18 @@ Route::post('/order_items/deliver', [DeliveryController::class, 'deliver'])->nam
 Route::post('/order_items/invoice', [DeliveryController::class, 'invoice'])->name('invoice');
 Route::post('/order_items/orderinvoice', [DeliveryController::class, 'orderinvoice'])->name('orderinvoice');
 Route::post('/collect', [DeliveryController::class, 'collect'])->name('collect');
-Route::post('/deliveries/index2', [DeliveryController::class],'index2')->name('deliveries.index2');
+Route::post('/deliveries/index2', [DeliveryController::class, 'index2'])->name('deliveries.index2');   // fixed: method was outside the array
 Route::post('/order_items/updateAllocation', [Order_itemController::class, 'updateAllocation'])->name('updateAllocation');
 Route::post('/porducts/srchProduct', [PorductController::class, 'srchProduct'])->name('srchProduct');
 Route::post('/porducts/generateProduct', [PorductController::class, 'generateProduct'])->name('generateProduct');
 Route::post('porducts/checkname', [PorductController::class, 'checkname'])->name('checkname');
 Route::post('/userdetails/getUserTypeList', [UserDetailsController::class, 'getUserTypeList'])->name('getUserTypeList');
 Route::get('delete', [DeleteController::class,'index']);
-Route::get('dashboard', [CustomAuthController::class, 'dashboard']); 
-Route::get('login', [CustomAuthController::class, 'index'])->name('login');
-Route::post('custom-login', [CustomAuthController::class, 'customLogin'])->name('login.custom'); 
-Route::post('customLoginproduction', [CustomAuthController::class, 'customLoginproduction'])->name('customLoginproduction'); 
-Route::get('registration', [CustomAuthController::class, 'registration'])->name('register-user');
-Route::post('custom-registration', [CustomAuthController::class, 'customRegistration'])->name('register.custom'); 
-Route::get('signout', [CustomAuthController::class, 'signOut'])->name('signout');
 Route::get('send-email', [EmailController::class, 'index']);
 Route::resource('validate',ValidateController::class);
 Route::resource('customerorders',CustomerOrderItermController::class);
 Route::resource('productionperemployees', EmployeeproductionController::class);
 //Route::resource('barcodes', BarcodeController::class);
-Route::resource('allocateproductions',AllocatiopController::class);
 Route::post('/barcodes/getScannedProductionid', [BarcodeController::class, 'getScannedProductionid'])->name('getScannedProductionid');
 
 
@@ -502,7 +544,6 @@ Route::post('/pickingslip/deliverslip', [PickingslipController::class, 'delivers
 Route::resource('lists',listController::class);
 Route::post('/customerorders/getProductbyidForOrderItem', [CustomerOrderItermController::class,'getProductbyidForOrderItem'])->name('getProductbyidForOrderItem');
 
-Route::post('/customerorders/getProductbyidForOrderItem', [CustomerOrderItermController::class,'getProductbyidForOrderItem'])->name('getProductbyidForOrderItem');
 //Route::resource('userrest', UserRestController::class);
 //Route::resource('jobcardrest', App\Http\Controllers\JobCardRestController::class);
 //Route::get('usersrest/usersrestshow',['as'=>'usersrest.show','uses'=>'UserRestController@show']);
@@ -537,14 +578,6 @@ Route::post('queryrest/qrystore', [
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------
 
-Route::get('dashboard', [CustomAuthController::class, 'dashboard']); 
-Route::get('login', [CustomAuthController::class, 'index'])->name('login');
-Route::post('custom-login', [CustomAuthController::class, 'customLogin'])->name('login.custom'); 
-Route::get('registration', [CustomAuthController::class, 'registration'])->name('register-user');
-Route::post('custom-registration', [CustomAuthController::class, 'customRegistration'])->name('register.custom'); 
-Route::get('signout', [CustomAuthController::class, 'signOut'])->name('signout');
-Route::get('send-email', [EmailController::class, 'index']);
-Route::get('validat', [CustomAuthController::class, 'validat'])->name('validat');
 Route::post('make', [ValidationController::class, 'make'])->name('make');
 Route::resource('validate', ValidationController::class);
 Route::post('create', [ ValidationController::class, 'create']);
@@ -972,17 +1005,10 @@ Route::get('/chemicaljobcards/destroy',   [ChemicalJobCardController::class, 'de
 
 
 
- 
-
-
 Route::get('/chemicalproducts/stocklist',  [StockAdjustmentController::class, 'productsList']);
 Route::get('/stock_adjustment/',          [StockAdjustmentController::class, 'index']);
 Route::get('/stock_adjustments/',         [StockAdjustmentController::class, 'store']);
 Route::delete('/stock_adjustments/{id}/',  [StockAdjustmentController::class, 'destroy']);
-
-
-
-use App\Http\Controllers\CompanyInfoController;
 
 
 
@@ -1001,8 +1027,6 @@ Route::get('orders/completeorder', [OrderController::class, 'completeOrder']);
 Route::get('orders/destroy',       [OrderController::class, 'destroy']);
 
 
-
-use App\Http\Controllers\RawMaterialController;
 
 Route::get('/raw-materials',        [RawMaterialController::class, 'index']);
 Route::get('/raw-materials/list',   [RawMaterialController::class, 'list']);
@@ -1023,10 +1047,6 @@ Route::get('/formulas/materials', [FormulaController::class, 'materials']);
 
 
 
-use App\Http\Controllers\StockReceiptController;
-use App\Http\Controllers\SupplierController;
-use App\Http\Controllers\RawMaterialAdjustmentController;
-
 // Suppliers
 Route::get('/suppliers/list',   [SupplierController::class, 'list']);
 Route::get('/suppliers/save',   [SupplierController::class, 'save']);
@@ -1044,3 +1064,5 @@ Route::get('/receive-stock',          fn () => view('stock.receive'));
 Route::get('/raw-material-adjustments/list',    [RawMaterialAdjustmentController::class, 'list']);
 Route::get('/raw-material-adjustments/save',    [RawMaterialAdjustmentController::class, 'save']);
 Route::get('/raw-material-adjustments/reverse', [RawMaterialAdjustmentController::class, 'reverse']);
+
+}); // ← end of auth group — everything above (after the PUBLIC section) needs a login

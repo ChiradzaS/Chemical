@@ -5,14 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Jobcard React</title>
-<!--     
-        @viteReactRefresh
-        @vite(['resources/css/app.css', 'resources/js/reactdeliveriescreate.tsx']) -->
-        
+    
+
 
 {{-- Use the compiled assets instead --}} 
 <link rel="stylesheet" href="{{ asset('public/build/assets/app-beAh6437.css') }}">
-<script src="{{ asset('public/build/assets/reactdeliveriescreate-Bi20kbku.js') }}" type="module" ></script>
+ <script src="{{ asset('public/build/assets/reactdeliveriescreate.js') }}" type="module" ></script> 
 
     
 </head>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Check, Loader2, Plus, Search, ChevronDown, ChevronRight, ShoppingCart, CircleCheck, X,
+  Check, Loader2, Search, ChevronDown, ChevronRight, ShoppingCart, CircleCheck, X,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
@@ -46,7 +46,6 @@ interface OrderRow {
 }
 
 const API_BASE   = window.laravelApiUrl || 'http://localhost/Chemical';
-const CREATE_URL = `${API_BASE}/ordercreate`;
 
 const STATE_COMPLETE = 2;
 
@@ -179,7 +178,7 @@ const OrderList: React.FC = () => {
       <div className="w-full space-y-6">
 
         {/* ── Page header ── */}
-        <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-6 flex items-center justify-between shadow-lg">
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-xl p-6 flex items-center shadow-lg">
           <div className="flex items-center gap-3">
             <ShoppingCart className="text-sky-400 w-7 h-7" />
             <div>
@@ -187,12 +186,6 @@ const OrderList: React.FC = () => {
               <p className="text-slate-400 text-sm">Tick items off as they are completed</p>
             </div>
           </div>
-          <a
-            href={CREATE_URL}
-            className="flex items-center gap-2 bg-sky-500 hover:bg-sky-600 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors shadow"
-          >
-            <Plus size={18} /> New Order
-          </a>
         </div>
 
         {/* ── Filters ── */}

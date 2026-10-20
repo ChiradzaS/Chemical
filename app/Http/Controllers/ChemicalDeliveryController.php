@@ -25,8 +25,8 @@ public function store(Request $request)
     ];
     $items   = $payload['items']   ?? [];
     $docType = $payload['docType'] ?? 'invoice';
-    $totExcl = $payload['totExcl'] ?? 0;
-    $totVat  = $payload['totVat']  ?? 0;
+    $totExcl = round((float) ($payload['totExcl'] ?? 0), 2);   // excl. VAT
+    $totVat  = round((float) ($payload['totVat']  ?? 0), 2);
 
     if (empty($deliveryData['customerId']) || empty($items)) {
         return response()->json(['error' => 'No data provided'], 422);
@@ -60,10 +60,12 @@ public function store(Request $request)
                 'unitId'      => $item['containerId'],
                 'taxId'       => 0,
                 'quantity'    => $item['quantity'],
-                'price'       => $item['unitPrice'],
-                'totalPrice'  => $item['total'],
+                // All amounts on the line are EXCL. VAT, matching invoices.totalValue —
+                // the sales report and the invoice list read them that way.
+                'price'       => $item['unitPrice'],                              // unit excl. VAT
+                'totalPrice'  => round((float) ($item['subtotal'] ?? 0), 2),      // line excl. VAT
                 'VatType'     => $item['vatApplicable'] ? 1 : 0,
-                'vatAmnt'     => $item['vatAmount'],
+                'vatAmnt'     => round((float) ($item['vatAmount'] ?? 0), 2),
                 'Discount'    => 0,
                 'stateId'     => 61,
                 'created_at'  => now(),

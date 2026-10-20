@@ -27,9 +27,6 @@ const byId = (list: { id: string; name: string }[], id: any) =>
   list.find(x => String(x.id) === String(id))?.name ?? '—';
 
 // ── Colour name → swatch hex ────────────────────────────────────────────────
-// Keyed by lowercase colour name (matches the `colour` settings group added
-// earlier: clear, white, red, blue, green, yellow, orange, pink, purple,
-// black). Anything not in this map renders no swatch at all.
 const COLOUR_SWATCHES: Record<string, string> = {
   clear:  '#f3f4f6',
   white:  '#ffffff',
@@ -62,11 +59,15 @@ interface Product {
   bag_type_id:           string | null;
   container_size_id:     string | null;
   weight_per_unit_grams: number | null;
-  price:                 number | null;
+  price:                 number | null;   // excl. VAT
+  price_incl_vat:            number | null;   // incl. VAT
   vat_applicable:        number;
   is_active:             number;
   created_at:            string;
 }
+
+const TH = 'px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap';
+const inputCls = 'w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none';
 
 function ChemicalProductList() {
   const unitTypes      = window.unitTypesData      || [];
@@ -79,10 +80,6 @@ function ChemicalProductList() {
   const [products,       setProducts]       = useState<Product[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [searchName,     setSearchName]     = useState('');
-  const [searchCategory, setSearchCategory] = useState('');
-  const [searchBrand,    setSearchBrand]    = useState('');
-  const [dateFrom,       setDateFrom]       = useState('');
-  const [dateTo,         setDateTo]         = useState('');
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchProducts = async () => {
@@ -101,102 +98,44 @@ function ChemicalProductList() {
 
   useEffect(() => { fetchProducts(); }, []);
 
-  // ── Edit → form page with id ─────────────────────────────────────────────
-  const handleEdit = (id: number) => {
-    window.location.href = `${FORM_URL}?id=${id}`;
-  };
-
-  // ── New → form page no id ────────────────────────────────────────────────
-  const handleNew = () => {
-    window.location.href = FORM_URL;
-  };
+  const handleEdit = (id: number) => { window.location.href = `${FORM_URL}?id=${id}`; };
+  const handleNew  = () => { window.location.href = FORM_URL; };
 
   // ── Filter ──────────────────────────────────────────────────────────────
-  const filtered = products.filter(p => {
-    const matchName     = !searchName.trim()     || p.name.toLowerCase().includes(searchName.toLowerCase());
-    const matchCategory = !searchCategory.trim() || (p.category ?? '').toLowerCase().includes(searchCategory.toLowerCase());
-    const matchBrand    = !searchBrand.trim()    || (p.brand ?? '').toLowerCase().includes(searchBrand.toLowerCase());
-    const matchFrom     = !dateFrom || new Date(p.created_at) >= new Date(dateFrom);
-    const matchTo       = !dateTo   || new Date(p.created_at) <= new Date(dateTo);
-    return matchName && matchCategory && matchBrand && matchFrom && matchTo;
-  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const term = searchName.trim().toLowerCase();
+  const filtered = products.filter(p =>
+    !term || p.name.toLowerCase().includes(term)
+  ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-7xl mx-auto">
 
         {/* ── Header ── */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">Chemical Products</h1>
-            <p className="text-gray-600">Manage your chemical product catalogue</p>
+            <h1 className="text-2xl font-bold text-gray-900">Chemical Products</h1>
+            <p className="text-sm text-gray-600">Manage your chemical product catalogue</p>
           </div>
           <button
             onClick={handleNew}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors shadow"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors shadow"
           >
-            <Plus size={18} />
-            New Product
+            <Plus size={16} /> New Product
           </button>
         </div>
 
         {/* ── Filters ── */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Search size={20} className="text-gray-500" />
-            <h2 className="text-lg font-semibold text-gray-900">Search Filters</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Product name</label>
-              <input
-                type="text"
-                value={searchName}
-                onChange={e => setSearchName(e.target.value)}
-                placeholder="Search name…"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <input
-                type="text"
-                value={searchCategory}
-                onChange={e => setSearchCategory(e.target.value)}
-                placeholder="Search category…"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-              <input
-                type="text"
-                value={searchBrand}
-                onChange={e => setSearchBrand(e.target.value)}
-                placeholder="Search brand…"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date from</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date to</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
+          <div className="max-w-md">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Product name</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input type="text" value={searchName} onChange={e => setSearchName(e.target.value)}
+                placeholder="Search product name…" className={`${inputCls} pl-8 py-2 text-base`} />
             </div>
           </div>
-          <div className="mt-3 text-sm text-gray-500">
+          <div className="mt-2 text-xs text-gray-500">
             Showing {filtered.length} product{filtered.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -204,133 +143,87 @@ function ChemicalProductList() {
         {/* ── List ── */}
         {loading ? (
           <div className="text-center py-16 text-gray-400">Loading products…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-lg shadow-sm border border-gray-200">
+            <Package size={48} className="mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600 text-lg">No products found</p>
+            <p className="text-gray-500 text-sm mt-1">Try adjusting your search filters</p>
+          </div>
         ) : (
-          <div className="space-y-4">
-            {filtered.map(product => {
-              const colourName   = byId(colourTypes, product.colour_id);
-              const colourSwatch = getColourSwatch(colourName);
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-base min-w-[1000px]">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className={`${TH} text-left`}>Product</th>
+                    <th className={`${TH} text-right`}>Stock on hand</th>
+                    <th className={`${TH} text-left`}>Colour</th>
+                    <th className={`${TH} text-left`}>Viscosity</th>
+                    <th className={`${TH} text-left`}>Fragrance</th>
+                    <th className={`${TH} text-left`}>Container</th>
+                    <th className={`${TH} text-right`}>Unit weight</th>
+                    <th className={`${TH} text-right`}>Price (incl. VAT)</th>
+                    <th className={TH}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(product => {
+                    const colourName   = byId(colourTypes, product.colour_id);
+                    const colourSwatch = getColourSwatch(colourName);
 
-              return (
-              <div
-                key={product.id}
-                className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow"
-              >
-                {/* Card header */}
-                <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-5">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="bg-slate-600 px-3 py-1 rounded-full text-sm font-semibold">
-                          #{product.id}
-                        </div>
-                        {product.category && (
-                          <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                            {product.category}
+                    return (
+                      <tr key={product.id} className="border-t border-gray-100 hover:bg-blue-50/40">
+                        {/* Product details: name + batch only */}
+                        <td className="px-4 py-3.5">
+                          <p className="font-semibold text-gray-900 text-base leading-tight">{product.name}</p>
+                          <p className="text-xs text-gray-500 font-mono mt-0.5">
+                            BATCH: {product.sku || '—'}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <span className="text-lg font-bold text-gray-800">{product.stock_on_hand ?? 0}</span>
+                          <span className="text-sm text-gray-500 ml-1">{(() => {
+                            const u = byId(unitTypes, product.stock_unit_id);
+                            return u === '—' ? '' : u.replace(/\s*[\/\\]\s*/g, ' ');
+                          })()}</span>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="flex items-center gap-1.5 text-gray-700">
+                            {colourSwatch && (
+                              <span className="inline-block w-4 h-4 rounded-full border border-gray-300 shrink-0"
+                                style={{ backgroundColor: colourSwatch }} />
+                            )}
+                            {colourName}
                           </span>
-                        )}
-                        {product.brand && (
-                          <span className="bg-slate-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                            {product.brand}
-                          </span>
-                        )}
-                        <h2 className="text-xl font-semibold">{product.name}</h2>
-                      </div>
-                      <div className="flex items-center gap-6 text-sm text-slate-300">
-                        {product.sku     && <span>BATCH: <strong className="text-white">{product.sku}</strong></span>}
-                        {product.barcode && <span>Barcode: <strong className="text-white">{product.barcode}</strong></span>}
-                        <span>Added: {new Date(product.created_at).toLocaleDateString()}</span>
-                        <span className={`font-bold ${product.is_active ? 'text-green-400' : 'text-red-400'}`}>
-                          {product.is_active ? '● Active' : '● Inactive'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 ml-4 shrink-0">
-                      <button
-                        onClick={() => handleEdit(product.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-md"
-                      >
-                        <Edit size={16} /> Edit
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card body */}
-                <div className="p-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-
-                  {/* no border — stroke removed */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Stock on hand</p>
-                    <p className="text-lg font-bold text-gray-800">
-                      {product.stock_on_hand ?? 0}
-                      <span className="text-sm font-normal text-gray-500 ml-1">
-                        {byId(unitTypes, product.stock_unit_id)}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Colour</p>
-                    <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      {colourSwatch && (
-                        <span
-                          className="inline-block w-3.5 h-3.5 rounded-full border border-gray-300 shrink-0"
-                          style={{ backgroundColor: colourSwatch }}
-                        />
-                      )}
-                      {colourName}
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Viscosity</p>
-                    <p className="text-sm font-semibold text-gray-800">{byId(viscosities, product.viscosity_id)}</p>
-                  </div>
-
-                  {/* price moved into the old active-ingredient slot */}
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Selling price</p>
-                    <p className="text-lg font-bold text-blue-700">
-                      {product.price != null ? `R ${Number(product.price).toFixed(2)}` : '—'}
-                      {!!product.vat_applicable && (
-                        <span className="text-xs font-normal text-gray-400 ml-1">excl. VAT</span>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Fragrance</p>
-                    <p className="text-sm font-semibold text-gray-800">{byId(fragrances, product.fragrance_id)}</p>
-                  </div>
-
-                  {/* no border — stroke removed */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Container</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {byId(bagTypes, product.bag_type_id)}  {byId(containerSizes, product.container_size_id)}
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Unit weight</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {product.weight_per_unit_grams ? `${product.weight_per_unit_grams} kg` : '—'}
-                    </p>
-                  </div>
-
-                </div>
-              </div>
-              );
-            })}
-
-            {filtered.length === 0 && (
-              <div className="text-center py-16 bg-white rounded-lg shadow-md">
-                <Package size={48} className="mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600 text-lg">No products found</p>
-                <p className="text-gray-500 text-sm mt-1">Try adjusting your search filters</p>
-              </div>
-            )}
+                        </td>
+                        <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">{byId(viscosities, product.viscosity_id)}</td>
+                        <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">{byId(fragrances, product.fragrance_id)}</td>
+                        <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">
+                          {[byId(bagTypes, product.bag_type_id), byId(containerSizes, product.container_size_id)]
+                            .filter(v => v !== '—')
+                            .map(v => v.replace(/\s*[\/\\]\s*/g, ' '))
+                            .join(' ')}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-gray-700 whitespace-nowrap">
+                          {product.weight_per_unit_grams ? `${product.weight_per_unit_grams} kg` : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-lg font-bold text-blue-700 whitespace-nowrap">
+                          {product.price_incl_vat != null ? `R ${Number(product.price_incl_vat).toFixed(2)}` : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <button
+                            onClick={() => handleEdit(product.id)}
+                            className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-md text-sm font-semibold transition-colors"
+                          >
+                            <Edit size={15} /> Edit
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

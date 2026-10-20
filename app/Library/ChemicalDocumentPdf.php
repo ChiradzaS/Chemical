@@ -7,334 +7,426 @@ use Carbon\Carbon;
 
 class ChemicalDocumentPdf extends Fpdf
 {
-    // ── Palette ───────────────────────────────────────────────────────────────
-    const GREY_DARK   = [130, 135, 140]; // section bars — light enough not to drain B&W toner
-    const GREY_MID    = [240, 241, 242]; // very light row fill — barely visible on B&W
-    const GREY_LINE   = [190, 192, 195]; // hairlines
+    // ── Page geometry (A4 portrait, mm) ───────────────────────────────────────
+    const L = 15;           // left margin
+    const W = 180;          // usable width (210 - 15 - 15)
 
-    // ── Company info (fetched from DB, not hardcoded) ──────────────────────────
+    // ── Company info (from company_info, not hardcoded) ──────────────────────
     private object $company;
+
+    /** Set straight after AddPage(); read by Footer() for that page */
+    public string $docLabel   = '';
+    public bool   $signatures = false;
 
     public function __construct(object $company, string $orientation = 'P', string $unit = 'mm', string $size = 'A4')
     {
         parent::__construct($orientation, $unit, $size);
         $this->company = $company;
+        $this->SetMargins(self::L, 15, self::L);
+        $this->AliasNbPages();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ═════════════════════════════════════════════════════════════════════════
+    // Small helpers
+    // ═════════════════════════════════════════════════════════════════════════
+
+    // Latin-1 text for the core fonts (FPDF can't print UTF-8 directly)
+    private function t($s): string
+    {
+        $s   = (string) ($s ?? '');
+        $out = @iconv('UTF-8', 'windows-1252//TRANSLIT', $s);
+        return $out === false ? $s : $out;
+    }
+
+    private function money($n): string
+    {
+        return 'R ' . number_format((float) $n, 2, '.', ' ');
+    }
+
+    private function qty($q): string
+    {
+        $q = (float) $q;
+        return floor($q) == $q ? number_format($q, 0, '.', ' ') : number_format($q, 2, '.', ' ');
+    }
+
+    private function companyName(): string
+    {
+        return $this->company->trading_name ?: $this->company->name;
+    }
+
+    // Start a page for one document type
+    private function newPage(string $label, bool $signatures): void
+    {
+        $this->SetAutoPageBreak(true, $signatures ? 56 : 22);
+        $this->AddPage();
+        $this->docLabel   = $label;
+        $this->signatures = $signatures;
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Header / footer
+    // ═════════════════════════════════════════════════════════════════════════
+
     function Header()
     {
-        // intentionally empty — drawn manually per document
+        // intentionally empty — drawn per document by drawHeader()
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
     function Footer()
     {
-        $this->SetY(-48);
+        $L = self::L; $W = self::W;
+        $this->SetDrawColor(180, 180, 180);
+        $this->SetLineWidth(0.2);
 
-        $this->SetDrawColor(...self::GREY_LINE);
-        $this->SetLineWidth(0.3);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(3);
+        // Delivery notes: receipt / signature block
+        if ($this->signatures) {
+            $this->SetY(-52);
+            $this->SetTextColor(0, 0, 0);
+            $this->SetFont('Arial', 'B', 8.5);
+            $this->SetX($L);
+            $this->Cell($W, 5, 'Goods received in good order and condition', 0, 1, 'L');
+            $this->Ln(9);
 
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(60, 60, 60);
+            $col = ($W - 10) / 2;
+            $y   = $this->GetY();
+            foreach ([['Received by', $L], ['Authorised by', $L + $col + 10]] as [$who, $x]) {
+                $this->Line($x, $y, $x + $col, $y);
+                $this->SetXY($x, $y + 1);
+                $this->SetFont('Arial', '', 7.5);
+                $this->SetTextColor(110, 110, 110);
+                $this->Cell($col, 4, $who . ' (signature)', 0, 0, 'L');
 
-        $this->Cell(95, 5, 'Received by (Print name):', 0, 0, 'L');
-        $this->Cell(95, 5, 'Authorised by (Print name):', 0, 1, 'L');
-        $this->Ln(7);
+                $this->Line($x, $y + 12, $x + $col * 0.62, $y + 12);
+                $this->Line($x + $col * 0.68, $y + 12, $x + $col, $y + 12);
+                $this->SetXY($x, $y + 13);
+                $this->Cell($col * 0.62, 4, 'Print name', 0, 0, 'L');
+                $this->SetX($x + $col * 0.68);
+                $this->Cell($col * 0.32, 4, 'Date', 0, 0, 'L');
+            }
+        }
 
-        $this->Cell(90, 0, '', 'T', 0, 'L');
-        $this->Cell(5,  0, '',  0,  0);
-        $this->Cell(90, 0, '', 'T', 1, 'L');
-        $this->Ln(2);
-
+        // Bottom rule + company line + page number
+        $this->SetY(-14);
+        $this->Line($L, $this->GetY(), $L + $W, $this->GetY());
+        $this->Ln(1.5);
+        $this->SetX($L);
         $this->SetFont('Arial', '', 7);
-        $this->Cell(45, 4, 'Signature',            0, 0, 'L');
-        $this->Cell(45, 4, 'Date: _______________', 0, 0, 'L');
-        $this->Cell(5,  4, '',                      0, 0);
-        $this->Cell(45, 4, 'Signature',            0, 0, 'L');
-        $this->Cell(45, 4, 'Date: _______________', 0, 1, 'L');
-
-        $this->SetY(-8);
-        $this->SetFont('Arial', 'I', 7);
-        $this->SetTextColor(150, 150, 150);
-        $this->Cell(0, 5, 'Page ' . $this->PageNo(), 0, 0, 'C');
-    }
-
-    // ── Letterhead ────────────────────────────────────────────────────────────
-    private function drawLetterhead(): void
-    {
-        $company = $this->company;
-
-        $this->SetFont('Arial', 'B', 22);
+        $this->SetTextColor(130, 130, 130);
+        $left = implode('  |  ', array_filter([
+            $this->companyName(),
+            !empty($this->company->tel_number) ? 'Tel ' . $this->company->tel_number : null,
+            $this->company->web_address ?? null,
+        ]));
+        $this->Cell($W * 0.65, 4, $this->t($left), 0, 0, 'L');
+        $this->Cell($W * 0.35, 4, $this->t($this->docLabel) . '  |  Page ' . $this->PageNo() . ' of {nb}', 0, 0, 'R');
         $this->SetTextColor(0, 0, 0);
-        $this->Cell(192, 8, $company->trading_name ?: $company->name, 0, 1, 'L');
-
-        $this->Ln(6); // padding between logo/name and the divider line
-
-        $this->SetDrawColor(...self::GREY_DARK);
-        $this->SetLineWidth(0.6);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(7);
     }
 
-    // ── Company + customer + meta block ─────────────────────────────────────────
-    private function drawCustomerMeta(object $doc, object $customer, string $docTitle, string $docRef, ?int $linkedInvoiceId = null): void
+    // ═════════════════════════════════════════════════════════════════════════
+    // Document parts
+    // ═════════════════════════════════════════════════════════════════════════
+
+    // "Label   value" row in the top-right meta block
+    private function metaRow(float $x, string $label, string $value): void
     {
-        $company = $this->company;
+        $this->SetX($x);
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(110, 110, 110);
+        $this->Cell(28, 5.2, $this->t($label), 0, 0, 'L');
+        $this->SetFont('Arial', 'B', 8.5);
+        $this->SetTextColor(0, 0, 0);
+        $this->Cell(42, 5.2, $this->t($value), 0, 1, 'R');
+    }
 
-        // Title banner
-        $this->SetFillColor(...self::GREY_DARK);
-        $this->SetTextColor(255, 255, 255);
-        $this->SetFont('Arial', 'B', 14);
-        $this->Cell(192, 10, $docTitle, 0, 1, 'C', true);
-        $this->Ln(3);
+    // Company (left) + document title and meta (right) + customer block
+    private function drawHeader(string $title, array $meta, object $customer, string $customerLabel, array $details = []): void
+    {
+        $L  = self::L; $W = self::W;
+        $c  = $this->company;
+        $rx = $L + $W - 70;
 
-        // ── Doc meta line (doc no / date / reference) — right-aligned, above the boxes ──
-        $metaParts = [
-            $docRef,
-            Carbon::parse($doc->created_at)->format('d M Y'),
-        ];
-        if (!empty($doc->reference)) {
-            $metaParts[] = 'Ref: ' . $doc->reference;
-        }
-        if ($linkedInvoiceId) {
-            $metaParts[] = 'Linked Invoice: INV #' . $linkedInvoiceId;
-        }
+        /* ── Company ── */
+        $this->SetXY($L, 15);
+        $this->SetFont('Arial', 'B', 18);
+        $this->Cell(105, 8, $this->t(strtoupper($this->companyName())), 0, 1, 'L');
+
+        $address = implode(', ', array_filter([
+            !empty($c->shop_no) ? 'Shop ' . $c->shop_no : null,
+            $c->physical_address ?? null,
+            $c->suburb ?? null,
+            $c->city ?? null,
+        ]));
+        $regVat = implode('   |   ', array_filter([
+            !empty($c->reg_number) ? 'Reg No ' . $c->reg_number : null,
+            !empty($c->vat_number) ? 'VAT No ' . $c->vat_number : null,
+        ]));
+        $lines = array_filter([
+            (!empty($c->trading_name) && $c->trading_name !== $c->name) ? $c->name : null,
+            $regVat ?: null,
+            $address ?: null,
+            !empty($c->tel_number) ? 'Tel ' . $c->tel_number : null,
+            implode('   |   ', array_filter([$c->email ?? null, $c->web_address ?? null])) ?: null,
+        ]);
         $this->SetFont('Arial', '', 8);
         $this->SetTextColor(90, 90, 90);
-        $this->Cell(192, 5, implode('   |   ', $metaParts), 0, 1, 'R');
+        foreach ($lines as $line) {
+            $this->SetX($L);
+            $this->Cell(105, 4.2, $this->t($line), 0, 1, 'L');
+        }
+        $leftBottom = $this->GetY();
+        $this->SetTextColor(0, 0, 0);
+
+        /* ── Title + meta ── */
+        $this->SetXY($rx, 15);
+        $this->SetFont('Arial', 'B', 20);
+        $this->Cell(70, 9, $this->t($title), 0, 1, 'R');
         $this->Ln(2);
-
-        // ── Build both columns first, so the cards can be sized to fit ──────────
-        $companyAddress = implode(', ', array_filter([
-            $company->shop_no ? 'Shop ' . $company->shop_no : null,
-            $company->physical_address,
-            $company->suburb,
-            $company->city,
-        ]));
-
-        $leftLines = array_values(array_filter([
-            $companyAddress ?: null,
-            !empty($company->tel_number) ? 'Tel: ' . $company->tel_number  : null,
-            !empty($company->email)      ? $company->email                 : null,
-            !empty($company->vat_number) ? 'VAT: ' . $company->vat_number  : null,
-        ]));
-
-        // Address lines come pre-assembled from fetchCustomer()
-        $rightLines = array_merge(
-            $customer->addressLines ?? [],
-            array_values(array_filter([
-                !empty($customer->contactPerson) ? 'Attn: ' . $customer->contactPerson : null,
-                !empty($customer->phone)         ? 'Tel: '  . $customer->phone         : null,
-                !empty($customer->email)         ? $customer->email                    : null,
-                !empty($customer->vatNumber)     ? 'VAT: '  . $customer->vatNumber     : null,
-                !empty($customer->accountNumber) ? 'Acc: '  . $customer->accountNumber : null,
-            ]))
-        );
-
-        // 3mm top pad + 4mm label + 6mm name + lines + 4mm bottom pad
-        $cardH  = max(38, 13 + (max(count($leftLines), count($rightLines)) * 4) + 4);
-        $startY = $this->GetY();
-
-        // ── Left card: Company Details (FROM) ───────────────────────────────────
-        $this->SetFillColor(...self::GREY_MID);
-        $this->Rect(10, $startY, 92, $cardH, 'F');
-
-        $this->SetXY(13, $startY + 3);
-        $this->SetFont('Arial', 'B', 7);
-        $this->SetTextColor(110, 115, 122);
-        $this->Cell(86, 4, 'FROM', 0, 2, 'L');
-
-        $this->SetX(13);
-        $this->SetFont('Arial', 'B', 11);
-        $this->SetTextColor(30, 30, 30);
-        $this->Cell(86, 6, $company->trading_name ?: $company->name, 0, 2, 'L');
-
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(70, 70, 70);
-        foreach ($leftLines as $line) {
-            $this->SetX(13);
-            $this->Cell(86, 4, $line, 0, 2, 'L');
+        foreach ($meta as $label => $value) {
+            if ($value !== '' && $value !== null) $this->metaRow($rx, $label, (string) $value);
         }
 
-        // ── Right card: Customer Details (BILL TO / DELIVER TO) ─────────────────
-        $this->SetFillColor(...self::GREY_MID);
-        $this->Rect(108, $startY, 84, $cardH, 'F');
+        $y = max($leftBottom, $this->GetY()) + 6;
+        $this->SetDrawColor(0, 0, 0);
+        $this->SetLineWidth(0.5);
+        $this->Line($L, $y, $L + $W, $y);
+        $this->SetLineWidth(0.2);
+        $y += 6;
 
-        $this->SetXY(111, $startY + 3);
-        $this->SetFont('Arial', 'B', 7);
-        $this->SetTextColor(110, 115, 122);
-        $this->Cell(78, 4, 'BILL TO / DELIVER TO', 0, 2, 'L');
-
-        $this->SetX(111);
+        /* ── Customer (left) ── */
+        $this->SetXY($L, $y);
+        $this->SetFont('Arial', 'B', 7.5);
+        $this->SetTextColor(110, 110, 110);
+        $this->Cell(100, 4, $this->t($customerLabel), 0, 1, 'L');
+        $this->SetTextColor(0, 0, 0);
+        $this->SetX($L);
         $this->SetFont('Arial', 'B', 11);
-        $this->SetTextColor(30, 30, 30);
-        $this->Cell(78, 6, $customer->name ?? '—', 0, 2, 'L');
+        $this->Cell(100, 6, $this->t($customer->name ?? '-'), 0, 1, 'L');
+        $this->SetFont('Arial', '', 8.5);
+        foreach ($customer->addressLines ?? [] as $line) {
+            $this->SetX($L);
+            $this->Cell(100, 4.4, $this->t($line), 0, 1, 'L');
+        }
+        $extra = array_filter([
+            !empty($customer->contactPerson) ? 'Attn: '   . $customer->contactPerson : null,
+            !empty($customer->phone)         ? 'Tel: '    . $customer->phone         : null,
+            !empty($customer->email)         ? $customer->email                      : null,
+            !empty($customer->vatNumber)     ? 'VAT No: ' . $customer->vatNumber     : null,
+            !empty($customer->accountNumber) ? 'Account: '. $customer->accountNumber : null,
+        ]);
+        $this->SetTextColor(90, 90, 90);
+        foreach ($extra as $line) {
+            $this->SetX($L);
+            $this->Cell(100, 4.4, $this->t($line), 0, 1, 'L');
+        }
+        $this->SetTextColor(0, 0, 0);
+        $leftBottom = $this->GetY();
 
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(70, 70, 70);
-        foreach ($rightLines as $line) {
-            $this->SetX(111);
-            $this->Cell(78, 4, $line, 0, 2, 'L');
+        /* ── Optional details (right) ── */
+        $details = array_filter($details, fn ($v) => $v !== '' && $v !== null);
+        $this->SetXY($rx, $y);
+        if ($details) {
+            $this->SetFont('Arial', 'B', 7.5);
+            $this->SetTextColor(110, 110, 110);
+            $this->Cell(70, 4, 'DETAILS', 0, 1, 'L');
+            $this->SetTextColor(0, 0, 0);
+            foreach ($details as $k => $v) $this->metaRow($rx, $k, (string) $v);
         }
 
-        $this->SetY($startY + $cardH + 6);
+        $this->SetY(max($leftBottom, $this->GetY()) + 8);
+    }
 
-        if (!empty($doc->other)) {
-            $this->SetFont('Arial', 'I', 8);
-            $this->SetTextColor(100, 100, 100);
-            $this->Cell(192, 5, 'Note: ' . $doc->other, 0, 1, 'L');
-            $this->Ln(2);
+    // Column header row of an items table
+    private function tableHeader(array $cols): void
+    {
+        $this->SetX(self::L);
+        $this->SetFillColor(242, 242, 242);
+        $this->SetDrawColor(0, 0, 0);
+        $this->SetLineWidth(0.3);
+        $this->SetFont('Arial', 'B', 8);
+        $this->SetTextColor(60, 60, 60);
+        $y = $this->GetY();
+        $this->Line(self::L, $y, self::L + self::W, $y);
+        foreach ($cols as [$label, $w, $align]) {
+            $this->Cell($w, 7, $this->t(strtoupper($label)), 0, 0, $align, true);
+        }
+        $this->Ln();
+        $y = $this->GetY();
+        $this->Line(self::L, $y, self::L + self::W, $y);
+        $this->SetTextColor(0, 0, 0);
+        $this->SetLineWidth(0.2);
+        $this->SetDrawColor(215, 215, 215);
+        $this->SetFont('Arial', '', 9);
+    }
+
+    // New page (repeating the table header) when the next row won't fit
+    private function rowBreak(array $cols): void
+    {
+        if ($this->GetY() + 8 > $this->GetPageHeight() - $this->bMargin) {
+            $label = $this->docLabel; $sig = $this->signatures;
+            $this->AddPage();
+            $this->docLabel = $label; $this->signatures = $sig;
+            $this->SetY(20);
+            $this->tableHeader($cols);
         }
     }
 
     // ── Invoice items (with pricing) ──────────────────────────────────────────
-    // Zero VAT on a line prints as an empty cell rather than "0%" / "R 0.00" —
-    // the columns stay put so the table lines up either way.
     private function drawInvoiceItems(array $items): void
     {
-        $widths = [8, 60, 30, 14, 22, 14, 20, 24];
-        $cols   = ['#', 'Product', 'Pack / Container', 'Qty', 'Unit Price', 'VAT', 'VAT Amt', 'Total'];
+        $cols = [['#', 8, 'C'], ['Description', 64, 'L'], ['Pack', 24, 'L'], ['Qty', 16, 'R'],
+                 ['Unit price', 24, 'R'], ['VAT', 20, 'R'], ['Amount', 24, 'R']];
+        $this->tableHeader($cols);
 
-        $this->SetFillColor(...self::GREY_DARK);
-        $this->SetTextColor(255, 255, 255);
-        $this->SetFont('Arial', 'B', 8);
-        $this->SetY($this->GetY());
-        foreach ($cols as $i => $col) {
-            $this->Cell($widths[$i], 8, $col, 0, 0, $i >= 3 ? 'R' : 'L', true);
-        }
-        $this->Ln();
-        $this->Ln(1);
+        foreach ($items as $i => $item) {
+            $this->rowBreak($cols);
+            $vat = (float) ($item->vatAmnt ?? 0);
 
-        $fill = false;
-        foreach ($items as $idx => $item) {
-            if ($fill) {
-                $this->SetFillColor(...self::GREY_MID);
-            } else {
-                $this->SetFillColor(255, 255, 255);
-            }
-            $this->SetTextColor(30, 30, 30);
-            $this->SetFont('Arial', '', 8);
-
-            $vatAmount = (float) ($item->vatAmnt ?? 0);
-            $hasVat    = $vatAmount > 0;
-
-            $vatLabel  = $hasVat ? '15%' : '';
-            $vatValue  = $hasVat ? 'R ' . number_format($vatAmount, 2) : '';
-
-            $this->Cell($widths[0], 7, $idx + 1,                                    0, 0, 'L', $fill);
-            $this->Cell($widths[1], 7, $item->productName   ?? '—',                 0, 0, 'L', $fill);
-            $this->Cell($widths[2], 7, $item->containerName ?? '—',                 0, 0, 'L', $fill);
-            $this->Cell($widths[3], 7, $item->quantity,                             0, 0, 'R', $fill);
-            $this->Cell($widths[4], 7, 'R ' . number_format($item->price,      2),  0, 0, 'R', $fill);
-            $this->Cell($widths[5], 7, $vatLabel,                                   0, 0, 'C', $fill);
-            $this->Cell($widths[6], 7, $vatValue,                                   0, 0, 'R', $fill);
-            $this->Cell($widths[7], 7, 'R ' . number_format($item->totalPrice, 2),  0, 0, 'R', $fill);
-            $this->Ln();
-            $fill = !$fill;
+            $this->SetX(self::L);
+            $this->SetTextColor(120, 120, 120);
+            $this->Cell(8, 8, $i + 1, 'B', 0, 'C');
+            $this->SetTextColor(0, 0, 0);
+            $this->Cell(64, 8, $this->t($item->productName ?? '-'), 'B', 0, 'L');
+            $this->Cell(24, 8, $this->t($item->containerName ?? ''), 'B', 0, 'L');
+            $this->Cell(16, 8, $this->qty($item->quantity), 'B', 0, 'R');
+            $this->Cell(24, 8, $this->money($item->price), 'B', 0, 'R');
+            $this->Cell(20, 8, $vat > 0 ? $this->money($vat) : '', 'B', 0, 'R');
+            $this->Cell(24, 8, $this->money($item->totalPrice), 'B', 1, 'R');
         }
 
-        $this->SetDrawColor(...self::GREY_LINE);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(4);
+        if (!$items) {
+            $this->SetX(self::L);
+            $this->SetTextColor(130, 130, 130);
+            $this->Cell(self::W, 10, 'No items on this invoice', 'B', 1, 'C');
+            $this->SetTextColor(0, 0, 0);
+        }
+        $this->Ln(3);
     }
 
     // ── Delivery items (no pricing) ───────────────────────────────────────────
     private function drawDeliveryItems(array $items): void
     {
-        $widths = [8, 112, 42, 30];
-        $cols   = ['#', 'Product', 'Pack / Container', 'Qty'];
+        $cols = [['#', 10, 'C'], ['Description', 110, 'L'], ['Pack', 35, 'L'], ['Qty', 25, 'R']];
+        $this->tableHeader($cols);
 
-        $this->SetFillColor(...self::GREY_DARK);
-        $this->SetTextColor(255, 255, 255);
-        $this->SetFont('Arial', 'B', 8);
-        foreach ($cols as $i => $col) {
-            $this->Cell($widths[$i], 8, $col, 0, 0, $i >= 3 ? 'R' : 'L', true);
-        }
-        $this->Ln();
-        $this->Ln(1);
+        $total = 0;
+        foreach ($items as $i => $item) {
+            $this->rowBreak($cols);
+            $total += (float) $item->quantity;
 
-        $fill = false;
-        foreach ($items as $idx => $item) {
-            $this->SetFillColor($fill ? self::GREY_MID[0] : 255, $fill ? self::GREY_MID[1] : 255, $fill ? self::GREY_MID[2] : 255);
-            $this->SetTextColor(30, 30, 30);
-            $this->SetFont('Arial', '', 8);
-
-            $this->Cell($widths[0], 7, $idx + 1,                    0, 0, 'L', $fill);
-            $this->Cell($widths[1], 7, $item->productName   ?? '—', 0, 0, 'L', $fill);
-            $this->Cell($widths[2], 7, $item->containerName ?? '—', 0, 0, 'L', $fill);
-            $this->Cell($widths[3], 7, $item->quantity,             0, 0, 'R', $fill);
-            $this->Ln();
-            $fill = !$fill;
+            $this->SetX(self::L);
+            $this->SetTextColor(120, 120, 120);
+            $this->Cell(10, 8, $i + 1, 'B', 0, 'C');
+            $this->SetTextColor(0, 0, 0);
+            $this->Cell(110, 8, $this->t($item->productName ?? '-'), 'B', 0, 'L');
+            $this->Cell(35, 8, $this->t($item->containerName ?? ''), 'B', 0, 'L');
+            $this->SetFont('Arial', 'B', 9);
+            $this->Cell(25, 8, $this->qty($item->quantity), 'B', 1, 'R');
+            $this->SetFont('Arial', '', 9);
         }
 
-        $this->SetDrawColor(...self::GREY_LINE);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(4);
+        if (!$items) {
+            $this->SetX(self::L);
+            $this->SetTextColor(130, 130, 130);
+            $this->Cell(self::W, 10, 'No items on this delivery', 'B', 1, 'C');
+            $this->SetTextColor(0, 0, 0);
+        }
+
+        $this->SetDrawColor(0, 0, 0);
+        $this->SetLineWidth(0.3);
+        $this->SetX(self::L + 120);
+        $this->SetFont('Arial', 'B', 9);
+        $this->Cell(35, 8, 'Total units', 'B', 0, 'L');
+        $this->Cell(25, 8, $this->qty($total), 'B', 1, 'R');
+        $this->SetLineWidth(0.2);
     }
 
     // ── Totals ────────────────────────────────────────────────────────────────
     private function drawTotals(float $excl, float $vat): void
     {
-        $incl   = $excl + $vat;
-        $startX = 108;
-        $labelW = 50;
-        $valW   = 34;
-        $boxY   = $this->GetY();
-
-        $this->SetFillColor(...self::GREY_MID);
-        $this->Rect($startX, $boxY, $labelW + $valW, 24, 'F');
-
-        $this->SetXY($startX, $boxY + 3);
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(70, 70, 70);
-        $this->Cell($labelW, 6, '  Subtotal (excl. VAT)', 0, 0, 'L');
-        $this->Cell($valW,   6, number_format($excl, 2) . '  ', 0, 1, 'R');
-
-        $this->SetX($startX);
-        $this->Cell($labelW, 6, '  VAT (15%)', 0, 0, 'L');
-        $this->Cell($valW,   6, $vat > 0 ? number_format($vat, 2) . '  ' : '', 0, 1, 'R');
-
-        $this->SetX($startX);
-        $this->SetFillColor(...self::GREY_DARK);
-        $this->SetTextColor(255, 255, 255);
-        $this->SetFont('Arial', 'B', 10);
-        $this->Cell($labelW, 10, '  TOTAL (incl. VAT)', 0, 0, 'L', true);
-        $this->Cell($valW,   10, 'R ' . number_format($incl, 2) . '  ', 0, 1, 'R', true);
-    }
-
-    // ── Receipt comment — bordered box, pinned near the bottom of the page ────
-    private function drawCommentBox(): void
-    {
-        $comment = trim($this->company->receipt_comment ?? '');
-        if ($comment === '') {
-            return;
+        if ($this->GetY() + 28 > $this->GetPageHeight() - $this->bMargin) {
+            $this->newPage($this->docLabel, $this->signatures);
+            $this->SetY(20);
         }
 
-        $boxX = 10;
-        $boxW = 190;
-
-        // Estimate wrapped line count so the box fits the text
-        $this->SetFont('Arial', 'BI', 9);
-        $lineHeight = 5;
-        $charsPerLine = 100; // rough estimate for Arial 9pt across 190mm
-        $lineCount = max(1, (int) ceil(mb_strlen($comment) / $charsPerLine));
-        $boxH = ($lineCount * $lineHeight) + 8;
-
-        // Pin the box just above the footer's reserved space (footer starts at -48)
-        $boxY = $this->GetPageHeight() - 48 - $boxH - 4;
-        $this->SetY($boxY);
-
+        $tx = self::L + self::W - 80;
+        foreach ([['Subtotal (excl. VAT)', $excl], ['VAT 15%', $vat]] as [$label, $val]) {
+            $this->SetX($tx);
+            $this->SetFont('Arial', '', 9);
+            $this->SetTextColor(80, 80, 80);
+            $this->Cell(50, 6.5, $label, 0, 0, 'L');
+            $this->SetTextColor(0, 0, 0);
+            $this->Cell(30, 6.5, $this->money($val), 0, 1, 'R');
+        }
+        $this->SetX($tx);
         $this->SetDrawColor(0, 0, 0);
-        $this->SetLineWidth(0.3);
-        $this->Rect($boxX, $boxY, $boxW, $boxH); // border only, no fill
+        $this->SetLineWidth(0.4);
+        $this->SetFillColor(242, 242, 242);
+        $this->SetFont('Arial', 'B', 10.5);
+        $this->Cell(50, 9, 'Total (incl. VAT)', 'TB', 0, 'L', true);
+        $this->Cell(30, 9, $this->money($excl + $vat), 'TB', 1, 'R', true);
+        $this->SetLineWidth(0.2);
+    }
 
-        $this->SetXY($boxX + 4, $boxY + 4);
-        $this->SetTextColor(0, 0, 0);
-        $this->SetFont('Arial', 'BI', 9);
-        $this->MultiCell($boxW - 8, $lineHeight, $comment, 0, 'L');
+    // ── Notes from the document + company receipt comment ────────────────────
+    private function drawNotes(?string $notes): void
+    {
+        $notes   = trim((string) $notes);
+        $comment = trim((string) ($this->company->receipt_comment ?? ''));
+
+        if ($notes !== '') {
+            $this->Ln(6);
+            $this->SetX(self::L);
+            $this->SetFont('Arial', 'B', 7.5);
+            $this->SetTextColor(110, 110, 110);
+            $this->Cell(self::W, 4, 'NOTES', 0, 1, 'L');
+            $this->SetTextColor(0, 0, 0);
+            $this->SetX(self::L);
+            $this->SetFont('Arial', '', 8.5);
+            $this->MultiCell(self::W, 4.5, $this->t($notes), 0, 'L');
+        }
+
+        if ($comment !== '') {
+            $this->Ln(6);
+            $this->SetX(self::L);
+            $this->SetDrawColor(180, 180, 180);
+            $this->SetFont('Arial', '', 8.5);
+            $this->SetTextColor(60, 60, 60);
+            $this->MultiCell(self::W, 4.6, $this->t($comment), 'T', 'L');
+            $this->SetTextColor(0, 0, 0);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Whole documents
+    // ═════════════════════════════════════════════════════════════════════════
+
+    private function invoicePage(object $invoice, object $customer, array $items, ?int $deliveryId = null): void
+    {
+        $this->newPage('Tax Invoice', false);
+        $this->drawHeader('TAX INVOICE', [
+            'Invoice No'  => 'INV #' . $invoice->id,
+            'Date'        => Carbon::parse($invoice->created_at)->format('d M Y'),
+            'Reference'   => $invoice->reference ?? '',
+            'Delivery No' => $deliveryId ? 'DN #' . $deliveryId : '',
+        ], $customer, 'BILL TO');
+
+        $this->drawInvoiceItems($items);
+        $this->drawTotals((float) $invoice->totalValue, (float) $invoice->totalVat);
+        $this->drawNotes($invoice->other ?? '');
+    }
+
+    private function deliveryPage(object $delivery, object $customer, array $items, ?int $invoiceId = null): void
+    {
+        $this->newPage('Delivery Note', true);
+        $this->drawHeader('DELIVERY NOTE', [
+            'Delivery No' => 'DN #' . $delivery->id,
+            'Date'        => Carbon::parse($delivery->created_at)->format('d M Y'),
+            'Invoice No'  => $invoiceId ? 'INV #' . $invoiceId : '',
+            'Reference'   => $delivery->reference ?? '',
+        ], $customer, 'DELIVER TO');
+
+        $this->drawDeliveryItems($items);
+        $this->drawNotes($delivery->other ?? '');
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -375,7 +467,7 @@ class ChemicalDocumentPdf extends Fpdf
     private static function fetchCustomer(?int $customerId): object
     {
         $blank = (object) [
-            'name'          => '—',
+            'name'          => '-',
             'addressLines'  => [],
             'contactPerson' => '',
             'phone'         => '',
@@ -418,7 +510,7 @@ class ChemicalDocumentPdf extends Fpdf
 
         return (object) [
             // legal name is what belongs on a tax invoice when it differs
-            'name'          => $trim($c->legalName ?? null) ?: ($trim($c->name ?? null) ?: '—'),
+            'name'          => $trim($c->legalName ?? null) ?: ($trim($c->name ?? null) ?: '-'),
             'addressLines'  => $addressLines,
             'contactPerson' => $contact,
             'phone'         => $trim($c->phoneNumber ?? null) ?: $trim($c->mobileNumber ?? null),
@@ -471,18 +563,8 @@ class ChemicalDocumentPdf extends Fpdf
         $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
         if (!$invoice) abort(404, 'Invoice not found');
 
-        $customer = self::fetchCustomer($invoice->customerId ?? null);
-        $items    = self::fetchInvoiceItems($invoiceId);
-        $company  = self::getCompanyInfo();
-
-        $pdf = new self($company, 'P', 'mm', 'A4');
-        $pdf->SetAutoPageBreak(true, 52);
-        $pdf->AddPage();
-        $pdf->drawLetterhead();
-        $pdf->drawCustomerMeta($invoice, $customer, 'TAX INVOICE', 'INV #' . $invoiceId);
-        $pdf->drawInvoiceItems($items);
-        $pdf->drawTotals($invoice->totalValue, $invoice->totalVat);
-        $pdf->drawCommentBox();
+        $pdf = new self(self::getCompanyInfo(), 'P', 'mm', 'A4');
+        $pdf->invoicePage($invoice, self::fetchCustomer($invoice->customerId ?? null), self::fetchInvoiceItems($invoiceId));
 
         return self::renderAndPrint($pdf, 'Invoice_' . $invoiceId);
     }
@@ -494,17 +576,13 @@ class ChemicalDocumentPdf extends Fpdf
         $delivery = DB::table('tb_deliveries')->where('id', $deliveryId)->first();
         if (!$delivery) abort(404, 'Delivery note not found');
 
-        $customer = self::fetchCustomer($delivery->customerId ?? null);
-        $items    = self::fetchDeliveryItems($deliveryId);
-        $company  = self::getCompanyInfo();
-
-        $pdf = new self($company, 'P', 'mm', 'A4');
-        $pdf->SetAutoPageBreak(true, 52);
-        $pdf->AddPage();
-        $pdf->drawLetterhead();
-        $pdf->drawCustomerMeta($delivery, $customer, 'DELIVERY NOTE', 'DN #' . $deliveryId, $delivery->invoiceNo ?? null);
-        $pdf->drawDeliveryItems($items);
-        $pdf->drawCommentBox();
+        $pdf = new self(self::getCompanyInfo(), 'P', 'mm', 'A4');
+        $pdf->deliveryPage(
+            $delivery,
+            self::fetchCustomer($delivery->customerId ?? null),
+            self::fetchDeliveryItems($deliveryId),
+            !empty($delivery->invoiceNo) ? (int) $delivery->invoiceNo : null
+        );
 
         return self::renderAndPrint($pdf, 'DeliveryNote_' . $deliveryId);
     }
@@ -521,25 +599,10 @@ class ChemicalDocumentPdf extends Fpdf
         if (!$delivery) abort(404, 'Delivery note not found');
 
         $customer = self::fetchCustomer($invoice->customerId ?? null);
-        $company  = self::getCompanyInfo();
 
-        $pdf = new self($company, 'P', 'mm', 'A4');
-        $pdf->SetAutoPageBreak(true, 52);
-
-        // Page 1 — Invoice
-        $pdf->AddPage();
-        $pdf->drawLetterhead();
-        $pdf->drawCustomerMeta($invoice, $customer, 'TAX INVOICE', 'INV #' . $invoiceId);
-        $pdf->drawInvoiceItems(self::fetchInvoiceItems($invoiceId));
-        $pdf->drawTotals($invoice->totalValue, $invoice->totalVat);
-        $pdf->drawCommentBox();
-
-        // Page 2 — Delivery Note
-        $pdf->AddPage();
-        $pdf->drawLetterhead();
-        $pdf->drawCustomerMeta($delivery, $customer, 'DELIVERY NOTE', 'DN #' . $deliveryId, $invoiceId);
-        $pdf->drawDeliveryItems(self::fetchDeliveryItems($deliveryId));
-        $pdf->drawCommentBox();
+        $pdf = new self(self::getCompanyInfo(), 'P', 'mm', 'A4');
+        $pdf->invoicePage($invoice, $customer, self::fetchInvoiceItems($invoiceId), $deliveryId);     // page 1
+        $pdf->deliveryPage($delivery, $customer, self::fetchDeliveryItems($deliveryId), $invoiceId);  // page 2
 
         return self::renderAndPrint($pdf, 'Invoice_DN_' . $invoiceId);
     }

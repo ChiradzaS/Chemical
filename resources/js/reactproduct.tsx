@@ -86,7 +86,7 @@ interface PF {
   formulaCode:                  string;  // ← required; a product cannot be saved without one
   phLevel:                      string;
   viscosityId:                  string;
-  activeIngredientId:           string;  // ← required
+  activeIngredientId:           string;  // optional
   fragranceId:                  string;
   colourId:                     string;
   concentration:                string;
@@ -176,7 +176,7 @@ const mapApiToForm = (d: any): PF => ({
   labourCostPerUnit:            String(d.labour_cost_per_unit   ?? ''),
   overheadCost:                 String(d.overhead_cost          ?? ''),
   markupPercentage:             String(d.markup_percentage      ?? '35'),
-  vatApplicable:                !!d.vat_applicable,
+  vatApplicable:                true,   // VAT always applies — older records saved without it are corrected on next save
   showWeightOnLabel:            d.show_weight_on_label      === undefined ? false : !!d.show_weight_on_label,
   showDateOnLabel:              d.show_date_on_label        === undefined ? false : !!d.show_date_on_label,
   showExpiryDateOnLabel:        d.show_expiry_date_on_label === undefined ? true  : !!d.show_expiry_date_on_label,
@@ -233,18 +233,6 @@ const SelId = ({ v, onCh, data, ph = 'Select…', err }: {
     </select>
     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
   </div>
-);
-
-const Tog = ({ on, set, lbl }: { on: boolean; set: (v: boolean) => void; lbl: string }) => (
-  <label className="flex items-center gap-2 cursor-pointer">
-    <div
-      onClick={() => set(!on)}
-      className={`relative w-8 h-4 rounded-full transition-colors ${on ? 'bg-blue-600' : 'bg-gray-300'}`}
-    >
-      <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
-    </div>
-    <span className="text-xs text-gray-700 font-medium">{lbl}</span>
-  </label>
 );
 
 // Simple checkbox for label-print options
@@ -463,12 +451,10 @@ const ProductForm: React.FC = () => {
   /* What this ingredient weighs in ONE container — the figure the filling line
      actually needs. The batch percentage means nothing on the floor; grams in
      the bottle does. */
-  const lineGramsPerUnit = (it: FormulaItem) => {
+  const lineKgPerUnit = (it: FormulaItem) => {
     if (!unitWeightKg || unitWeightKg <= 0) return null;
-    return unitWeightKg * ((numOrNull(it.percentage) ?? 0) / 100) * 1000;
+    return unitWeightKg * ((numOrNull(it.percentage) ?? 0) / 100);
   };
-
-  const totalGramsPerUnit = hasUnitWeight ? unitWeightKg! * 1000 : null;
 
   /* ── Pricing ──
      UI exposes only Cost price + Markup %.
@@ -483,7 +469,7 @@ const ProductForm: React.FC = () => {
   const legacy = pkg + lab + ovh;                    // hidden extras on older records
   const cost   = raw + legacy;
   const excl   = cost * (1 + mkup / 100);
-  const vat    = form.vatApplicable ? excl * (VAT_RATE / 100) : 0;
+  const vat    = excl * (VAT_RATE / 100);   // VAT always applies
   const incl   = excl + vat;
   const mrgn   = excl > 0 ? ((excl - cost) / excl) * 100 : 0;
   const sellingPriceMissing = submitted && (!excl || excl <= 0);
@@ -510,7 +496,7 @@ const ProductForm: React.FC = () => {
     setPriceInclInput(v);
     const incVat = parseFloat(v);
     if (!Number.isFinite(incVat)) return;
-    markupFromExcl(form.vatApplicable ? incVat / (1 + VAT_RATE / 100) : incVat);
+    markupFromExcl(incVat / (1 + VAT_RATE / 100));
   };
 
   // The price boxes follow the markup unless the operator is typing in one
@@ -551,7 +537,7 @@ const ProductForm: React.FC = () => {
     formula_code:           form.formulaCode,            // required — never null
     ph_level:               form.phLevel                 ? parseFloat(form.phLevel)           : null,
     viscosity_id:           form.viscosityId             || null,
-    // required — sent as a number so an empty select can never reach an int column
+    // optional — sent as a number, or null when none is picked
     active_ingredient_id:   form.activeIngredientId      ? Number(form.activeIngredientId)    : null,
     fragrance_id:           form.fragranceId             || null,
     colour_id:              form.colourId                || null,
@@ -576,8 +562,9 @@ const ProductForm: React.FC = () => {
     labour_cost_per_unit:   lab,
     overhead_cost:          ovh,
     markup_percentage:      mkup,
-    price:                  parseFloat(excl.toFixed(2)),
-    vat_applicable:         form.vatApplicable ? 1 : 0,
+    price:                  parseFloat(excl.toFixed(2)),   // Selling excl. VAT, as shown on the page
+    price_incl_vat:             parseFloat(incl.toFixed(2)),   // Selling incl. VAT, as shown on the page
+    vat_applicable:         1,   // always — VAT can't be switched off
     vat_rate:               VAT_RATE,
     // ── Label print options ──
     show_weight_on_label:       form.showWeightOnLabel      ? 1 : 0,
@@ -596,7 +583,6 @@ const ProductForm: React.FC = () => {
     if (!form.formulaCode.trim()) { flash('Formula is required', false);             return; }
     if (!form.stockUnitId)        { flash('Package / unit is required', false);      return; }
     if (!form.viscosityId)        { flash('Viscosity is required', false);           return; }
-    if (!form.activeIngredientId) { flash('Active ingredient is required', false);   return; }
     if (!form.fragranceId)        { flash('Fragrance is required', false);           return; }
     if (!form.colourId)           { flash('Colour is required', false);              return; }
     if (!form.bagTypeId)          { flash('Container / bottle type is required', false); return; }
@@ -679,7 +665,7 @@ const ProductForm: React.FC = () => {
         {cost > 0 && (
           <div className="hidden xl:flex items-center gap-4 ml-2 text-xs text-gray-500 border-l border-gray-800 pl-4 shrink-0">
             <span>Cost <strong className="text-white">R {cost.toFixed(2)}</strong></span>
-            <span>Sell <strong className="text-white">R {excl.toFixed(2)}</strong></span>
+            <span>Sell <strong className="text-white">R {incl.toFixed(2)}</strong> incl. VAT</span>
             <span className={mrgn >= 30 ? 'text-green-400' : mrgn >= 15 ? 'text-amber-400' : 'text-red-400'}>
               Margin <strong>{mrgn.toFixed(1)}%</strong>
             </span>
@@ -818,7 +804,7 @@ const ProductForm: React.FC = () => {
           </div>
 
           {/* ── Selected formula: density, then the ingredients ── */}
-          <S icon="🧪" title="Formula makeup" />
+          <S icon="🧪" title="Formula makeup — estimate" />
 
           {!pickedFormula ? (
             <p className={`text-xs ${formulaMissing ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
@@ -843,6 +829,10 @@ const ProductForm: React.FC = () => {
                 </div>
               </div>
 
+              <p className="px-3 py-1.5 text-[10px] text-slate-600 bg-slate-100 border-b border-slate-200 font-semibold">
+                ESTIMATE — all weights and costs below are calculated from the formula and may differ from actual production
+              </p>
+
               {numOrNull(pickedFormula.density_kg_per_l) === null && (
                 <p className="px-3 py-1.5 text-[10px] text-amber-700 bg-amber-50 border-b border-amber-100 font-semibold">
                   No density recorded on this formula — using 1.0000 kg/L
@@ -852,8 +842,7 @@ const ProductForm: React.FC = () => {
               {/* What one container holds — the grams column below is scaled to it */}
               {hasUnitWeight && (
                 <p className="px-3 py-1.5 text-[10px] text-blue-700 bg-blue-50 border-b border-blue-100 font-semibold">
-                  Per {pickedContainer?.name ?? 'unit'} — {unitWeightKg!.toFixed(3)} kg
-                  ({totalGramsPerUnit!.toFixed(0)} g)
+                  Est. per {pickedContainer?.name ?? 'unit'} — {unitWeightKg!.toFixed(3)} kg
                 </p>
               )}
 
@@ -871,11 +860,11 @@ const ProductForm: React.FC = () => {
                       <th className="text-right px-2 py-1.5 font-bold w-14">%</th>
                       {hasUnitWeight && (
                         <th className="text-right px-2 py-1.5 font-bold w-20">
-                          g / {pickedContainer?.name ?? 'unit'}
+                          Est. kg / {pickedContainer?.name ?? 'unit'}
                         </th>
                       )}
                       {hasUnitWeight && (
-                        <th className="text-right px-3 py-1.5 font-bold w-20">Cost</th>
+                        <th className="text-right px-3 py-1.5 font-bold w-20">Est. cost</th>
                       )}
                     </tr>
                   </thead>
@@ -892,20 +881,21 @@ const ProductForm: React.FC = () => {
                             {bal && (
                               <span className="ml-1.5 text-[9px] font-bold text-blue-600">BAL</span>
                             )}
+                            <span className="ml-1.5 text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1">EST</span>
                           </td>
                           <td className="px-2 py-1.5 text-right font-mono text-gray-600">
                             {pct.toFixed(2)}
                           </td>
                           {hasUnitWeight && (
                             <td className="px-2 py-1.5 text-right font-mono font-bold text-gray-900">
-                              {lineGramsPerUnit(it)!.toFixed(1)}
+                              {lineKgPerUnit(it)!.toFixed(3)}
                             </td>
                           )}
                           {hasUnitWeight && (
                             <td className="px-3 py-1.5 text-right font-mono font-semibold text-gray-800">
                               {lineCostPerUnit(it) === null
                                 ? <span className="text-amber-600 font-sans font-medium text-[10px]">no price</span>
-                                : lineCostPerUnit(it)!.toFixed(4)}
+                                : `${lineCostPerUnit(it)!.toFixed(4)}`}
                             </td>
                           )}
                         </tr>
@@ -916,16 +906,16 @@ const ProductForm: React.FC = () => {
                     <tfoot>
                       <tr className="bg-gray-50 border-t border-gray-200">
                         <td className="px-3 py-1.5 font-bold text-gray-500 uppercase text-[9px] tracking-wider">
-                          Total
+                          Est. total
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono text-gray-500">
                           {items.reduce((s, it) => s + (numOrNull(it.percentage) ?? 0), 0).toFixed(2)}
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono font-bold text-gray-900">
-                          {items.reduce((s, it) => s + (lineGramsPerUnit(it) ?? 0), 0).toFixed(1)}
+                          {items.reduce((s, it) => s + (lineKgPerUnit(it) ?? 0), 0).toFixed(3)}
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono text-gray-500">
-                          {recipeCostUnit === null ? '—' : recipeCostUnit.toFixed(4)}
+                          {recipeCostUnit === null ? '—' : `${recipeCostUnit.toFixed(4)}`}
                         </td>
                       </tr>
                     </tfoot>
@@ -939,7 +929,7 @@ const ProductForm: React.FC = () => {
                 <div className="border-t border-gray-200 bg-white px-3 py-2.5">
                   <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 font-semibold">
                     {unpricedCount} ingredient{unpricedCount > 1 ? 's have' : ' has'} no cost on
-                    file — add {unpricedCount > 1 ? 'their prices' : 'its price'} to see the recipe cost
+                    file — add {unpricedCount > 1 ? 'their prices' : 'its price'} to see the estimated recipe cost
                   </p>
                 </div>
               )}
@@ -949,7 +939,7 @@ const ProductForm: React.FC = () => {
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        Cost per kg
+                        Est. cost per kg
                       </p>
                       <p className="text-sm font-bold font-mono text-gray-800 leading-none mt-0.5">
                         R {costPerKg.toFixed(4)}
@@ -957,7 +947,7 @@ const ProductForm: React.FC = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        Cost per unit
+                        Est. cost per unit
                       </p>
                       <p className="text-lg font-bold font-mono text-blue-700 leading-none mt-0.5">
                         {recipeCostUnit === null ? '—' : `R ${recipeCostUnit.toFixed(2)}`}
@@ -970,7 +960,7 @@ const ProductForm: React.FC = () => {
                       onClick={() => set('rawMaterialCost')(recipeCostUnit.toFixed(2))}
                       className="w-full mt-2 text-[10px] font-bold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 rounded py-1.5 transition-colors"
                     >
-                      Use as cost price
+                      Use estimate as cost price
                     </button>
                   )}
                 </div>
@@ -1029,15 +1019,14 @@ const ProductForm: React.FC = () => {
                 err={missing(form.viscosityId)}
               />
             </div>
-            {/* Active ingredient — required */}
+            {/* Active ingredient — optional */}
             <div>
-              <L t="Active ingredient" required />
+              <L t="Active ingredient" />
               <SelId
                 v={form.activeIngredientId}
                 onCh={set('activeIngredientId')}
                 data={activeIngredients}
-                ph="Select active ingredient…"
-                err={missing(form.activeIngredientId)}
+                ph="None"
               />
             </div>
             <div>
@@ -1300,7 +1289,7 @@ const ProductForm: React.FC = () => {
               <span className={`text-xs font-mono ${sellingPriceMissing ? 'text-red-600 font-bold' : 'text-gray-700'}`}>R {excl.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center py-1">
-              <Tog on={form.vatApplicable} set={set('vatApplicable')} lbl={`VAT ${VAT_RATE}%`} />
+              <span className="text-xs text-gray-400">VAT {VAT_RATE}%</span>
               <span className="text-xs font-mono text-gray-700">R {vat.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
