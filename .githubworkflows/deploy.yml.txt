@@ -1,0 +1,24 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull latest code on server
+        run: |
+          RES=$(curl -s -H "Authorization: cpanel ${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_TOKEN }}" \
+            "https://${{ secrets.CPANEL_HOST }}:2083/execute/VersionControl/update?repository_root=/home/${{ secrets.CPANEL_USER }}/repositories/Chemical&branch=main")
+          echo "$RES"
+          echo "$RES" | grep -q '"status":1'
+
+      - name: Deploy to public_html/Chemical
+        run: |
+          RES=$(curl -s -H "Authorization: cpanel ${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_TOKEN }}" \
+            "https://${{ secrets.CPANEL_HOST }}:2083/execute/VersionControlDeployment/create?repository_root=/home/${{ secrets.CPANEL_USER }}/repositories/Chemical")
+          echo "$RES"
+          echo "$RES" | grep -q '"status":1'
