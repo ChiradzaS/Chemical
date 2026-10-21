@@ -1,3 +1,4 @@
+@'
 name: Deploy to cPanel (FTP)
 
 on:
@@ -30,21 +31,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # FTPS, and keep reconnecting if the server drops the line
           SETTINGS="set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate no; \
                     set net:timeout 60; set net:max-retries 20; set net:reconnect-interval-base 5; \
                     set net:reconnect-interval-max 30; set ftp:passive-mode true"
           ftp() { lftp -u "$FTP_USER","$FTP_PASS" -e "$SETTINGS; $1; bye" "$FTP_HOST"; }
 
-          # Files the server never needs
           EXCLUDE='^(\.git|\.github/|node_modules/|vendor/|storage/|bootstrap/cache/|tests/|resources/js/|resources/css/|\.env|package(-lock)?\.json$|vite\.config\.js$|tsconfig.*\.json$|phpunit\.xml$|\.deployed-sha$)|(^|/)\.gitignore$|\.(zip|sql|md)$'
 
-          # Which commit is already on the server?
           LAST=$(ftp "cat .deployed-sha" 2>/dev/null | tr -d '[:space:]' || true)
           echo "Last deployed commit: ${LAST:-none}"
 
           if [ -n "$LAST" ] && git cat-file -e "$LAST^{commit}" 2>/dev/null; then
-            # ── Normal run: only files changed since the last deploy ──
             git diff --name-only --diff-filter=ACMRT "$LAST" HEAD | grep -Ev "$EXCLUDE" > changed.txt || true
             git diff --name-only --diff-filter=D     "$LAST" HEAD | grep -Ev "$EXCLUDE" > deleted.txt || true
             echo "Changed: $(wc -l < changed.txt)   Deleted: $(wc -l < deleted.txt)"
@@ -66,7 +63,6 @@ jobs:
               echo "Nothing to upload."
             fi
           else
-            # ── First run: upload everything, skipping files already the same size ──
             echo "First deploy: mirroring the whole project (resumes if the line drops)"
             ftp "mirror -R --ignore-time --parallel=2 --verbose \
                   -X .git/ -X .github/ -X node_modules/ -X vendor/ -X storage/ -X bootstrap/cache/ \
@@ -76,7 +72,7 @@ jobs:
                   ./ ./"
           fi
 
-          # Remember what's now on the server
           echo "$GITHUB_SHA" > .deployed-sha
           ftp "put .deployed-sha -o .deployed-sha"
           echo "Deployed $GITHUB_SHA"
+'@ | Out-File -FilePath .github\workflows\deploy.yml -Encoding utf8
